@@ -31,9 +31,7 @@ export default function Technicians() {
   const [showBreakdowns, setShowBreakdowns] = useState(true);
   const [showSearch, setShowSearch] = useState(true);
   const [formData, setFormData] = useState({});
-
-  // Handle URL parameter for auto-opening edit dialog
-  const [urlEditChecked, setUrlEditChecked] = React.useState(false);
+  const [urlEditChecked, setUrlEditChecked] = useState(false);
 
   // Excel-style column filters (multi-select)
   const [filterEmployeeId, setFilterEmployeeId] = useState([]);
@@ -169,6 +167,24 @@ export default function Technicians() {
 
 
 
+  // Handle URL parameter for auto-opening edit dialog
+  React.useEffect(() => {
+    if (urlEditChecked || !technicians || technicians.length === 0) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const editId = urlParams.get('edit');
+
+    if (editId) {
+      const techToEdit = technicians.find(t => t.id === editId);
+      if (techToEdit) {
+        handleEdit(techToEdit);
+      }
+    }
+
+    setUrlEditChecked(true);
+  }, [technicians, urlEditChecked]);
+
+
   // Show loading state AFTER all hooks but BEFORE data processing
   if (isLoading) {
     return (
@@ -186,12 +202,12 @@ export default function Technicians() {
   const activeTechnicians = technicians.filter(t => t.status === 'active').length;
   const onLeave = technicians.filter(t => t.status === 'on_leave').length;
   const pendingArrival = technicians.filter(t => t.status === 'pending_arrival').length;
-  
+
   // Count technicians with actual inactive statuses
-  const inactiveOrExitedTechniciansCount = technicians.filter(t => 
+  const inactiveOrExitedTechniciansCount = technicians.filter(t =>
     ['exited_country', 'suspended', 'absconded', 'transferred'].includes(t.status)
   ).length;
-  
+
   const trades = [...new Set(technicians.map(t => t.trade).filter(Boolean))];
 
   // Apply search filter
@@ -295,11 +311,11 @@ export default function Technicians() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     const dataToSubmit = {
       ...formData,
     };
-    
+
     createMutation.mutate(dataToSubmit);
   };
 
@@ -320,7 +336,7 @@ export default function Technicians() {
 
   const handleUpdateSubmit = (e) => {
     e.preventDefault();
-    
+
     if (editingTechnician.status === 'pending_exit' && !editingTechnician.expected_country_exit_date) {
       alert("Please provide the expected country exit date for pending_exit status");
       return;
@@ -394,18 +410,18 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
       if (extractResult.status === "success" && extractResult.output) {
         const convertDate = (dateStr) => {
           if (!dateStr) return null;
-          
+
           if (typeof dateStr !== 'string') return null;
 
           if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
             return dateStr;
           }
-          
+
           if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
             const [day, month, year] = dateStr.split('/');
             return `${year}-${month}-${day}`;
           }
-          
+
           return dateStr;
         };
 
@@ -461,25 +477,10 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
     filterPhone.length > 0 || filterEmail.length > 0 || filterTradeCol.length > 0 ||
     filterDepartment.length > 0 || filterStatusCol.length > 0 || filterCampCol.length > 0 ||
     filterFloorCol.length > 0 || filterRoomCol.length > 0 || filterBed.length > 0 ||
-    filterInductionDate.length > 0 || filterExitDate.length > 0 || 
+    filterInductionDate.length > 0 || filterExitDate.length > 0 ||
     filterExpectedCountryExitDate.length > 0 || filterActualCountryExitDate.length > 0;
 
-  // Handle URL parameter for auto-opening edit dialog
-  React.useEffect(() => {
-    if (urlEditChecked || !technicians || technicians.length === 0) return;
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const editId = urlParams.get('edit');
-    
-    if (editId) {
-      const techToEdit = technicians.find(t => t.id === editId);
-      if (techToEdit) {
-        handleEdit(techToEdit);
-      }
-    }
-    
-    setUrlEditChecked(true);
-  }, [technicians, urlEditChecked]);
+
 
   const ColumnFilter = ({ values, selected, setSelected, searchValue, setSearchValue }) => {
     const filteredValues = values.filter(v =>
@@ -690,8 +691,8 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
             <p className="text-gray-600 mt-1">{filteredTechnicians.length} of {technicians.length} technicians</p>
           </div>
           <div className="flex gap-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={refetchTechnicians}
               disabled={isRefetchingTechnicians}
               className="border-indigo-600 text-indigo-600 hover:bg-indigo-50"
@@ -1327,9 +1328,8 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                     return (
                       <tr
                         key={tech.id}
-                        className={`border-b border-gray-200 hover:bg-blue-50 transition-colors ${
-                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                        }`}
+                        className={`border-b border-gray-200 hover:bg-blue-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                          }`}
                       >
                         <td className="px-3 py-2 text-sm border-r border-gray-200 whitespace-nowrap no-print">
                           <div className="flex gap-1 justify-center">
@@ -1409,9 +1409,9 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                         <td className="px-4 py-3 text-sm border-r border-gray-200 whitespace-nowrap">
                           <Badge variant={
                             tech.status === 'active' ? 'default' :
-                            tech.status === 'on_leave' || tech.status === 'pending_exit' || tech.status === 'pending_arrival' ? 'secondary' :
-                            tech.status === 'exited_country' ? 'outline' :
-                            tech.status === 'suspended' ? 'outline' : 'destructive'
+                              tech.status === 'on_leave' || tech.status === 'pending_exit' || tech.status === 'pending_arrival' ? 'secondary' :
+                                tech.status === 'exited_country' ? 'outline' :
+                                  tech.status === 'suspended' ? 'outline' : 'destructive'
                           } className="text-xs">
                             {tech.status?.replace(/_/g, ' ')}
                           </Badge>
@@ -1469,7 +1469,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   required
                   value={formData.employee_id || ''}
-                  onChange={(e) => setFormData({...formData, employee_id: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -1477,7 +1477,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   required
                   value={formData.full_name || ''}
-                  onChange={(e) => setFormData({...formData, full_name: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -1485,28 +1485,28 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   required
                   value={formData.nationality || ''}
-                  onChange={(e) => setFormData({...formData, nationality: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>State/Province</Label>
                 <Input
                   value={formData.state || ''}
-                  onChange={(e) => setFormData({...formData, state: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Ethnicity</Label>
                 <Input
                   value={formData.ethnicity || ''}
-                  onChange={(e) => setFormData({...formData, ethnicity: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, ethnicity: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Gender*</Label>
                 <Select
                   value={formData.gender || ''}
-                  onValueChange={(value) => setFormData({...formData, gender: value})}
+                  onValueChange={(value) => setFormData({ ...formData, gender: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select gender" />
@@ -1521,7 +1521,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Label>Marital Status</Label>
                 <Select
                   value={formData.marital_status || ''}
-                  onValueChange={(value) => setFormData({...formData, marital_status: value})}
+                  onValueChange={(value) => setFormData({ ...formData, marital_status: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
@@ -1539,14 +1539,14 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   type="date"
                   value={formData.date_of_birth || ''}
-                  onChange={(e) => setFormData({...formData, date_of_birth: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Passport No</Label>
                 <Input
                   value={formData.passport_no || ''}
-                  onChange={(e) => setFormData({...formData, passport_no: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, passport_no: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -1554,14 +1554,14 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   type="date"
                   value={formData.passport_expiry_date || ''}
-                  onChange={(e) => setFormData({...formData, passport_expiry_date: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, passport_expiry_date: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Health Insurance No</Label>
                 <Input
                   value={formData.health_insurance_no || ''}
-                  onChange={(e) => setFormData({...formData, health_insurance_no: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, health_insurance_no: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -1569,14 +1569,14 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   type="date"
                   value={formData.health_insurance_expiry_date || ''}
-                  onChange={(e) => setFormData({...formData, health_insurance_expiry_date: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, health_insurance_expiry_date: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Phone</Label>
                 <Input
                   value={formData.phone || ''}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -1584,14 +1584,14 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   type="email"
                   value={formData.email || ''}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Trade</Label>
                 <Input
                   value={formData.trade || ''}
-                  onChange={(e) => setFormData({...formData, trade: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, trade: e.target.value })}
                   placeholder="e.g. Electrician, Plumber"
                 />
               </div>
@@ -1599,14 +1599,14 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Label>Department</Label>
                 <Input
                   value={formData.department || ''}
-                  onChange={(e) => setFormData({...formData, department: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
                 <Select
                   value={formData.status || 'active'}
-                  onValueChange={(value) => setFormData({...formData, status: value})}
+                  onValueChange={(value) => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -1629,7 +1629,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   type="date"
                   value={formData.induction_date || ''}
-                  onChange={(e) => setFormData({...formData, induction_date: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, induction_date: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -1637,7 +1637,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   type="date"
                   value={formData.exit_date || ''}
-                  onChange={(e) => setFormData({...formData, exit_date: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, exit_date: e.target.value })}
                 />
                 <p className="text-xs text-gray-500">Date employment was terminated</p>
               </div>
@@ -1646,7 +1646,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   type="date"
                   value={formData.expected_country_exit_date || ''}
-                  onChange={(e) => setFormData({...formData, expected_country_exit_date: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, expected_country_exit_date: e.target.value })}
                 />
                 <p className="text-xs text-gray-500">Expected date to leave UAE</p>
               </div>
@@ -1655,7 +1655,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Input
                   type="date"
                   value={formData.actual_country_exit_date || ''}
-                  onChange={(e) => setFormData({...formData, actual_country_exit_date: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, actual_country_exit_date: e.target.value })}
                 />
                 <p className="text-xs text-gray-500">Actual date left UAE</p>
               </div>
@@ -1745,7 +1745,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
           <DialogHeader>
             <DialogTitle>Update Technician Status</DialogTitle>
           </DialogHeader>
-          
+
           {editingTechnician && (
             <form onSubmit={handleUpdateSubmit} className="space-y-4">
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
@@ -1801,7 +1801,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                 <Label>New Status*</Label>
                 <Select
                   value={editingTechnician.status}
-                  onValueChange={(val) => setEditingTechnician({...editingTechnician, status: val})}
+                  onValueChange={(val) => setEditingTechnician({ ...editingTechnician, status: val })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -1825,7 +1825,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                       <Label>Health Insurance No</Label>
                       <Input
                         value={editingTechnician.health_insurance_no || ''}
-                        onChange={(e) => setEditingTechnician({...editingTechnician, health_insurance_no: e.target.value})}
+                        onChange={(e) => setEditingTechnician({ ...editingTechnician, health_insurance_no: e.target.value })}
                         placeholder="e.g., HI789012"
                       />
                     </div>
@@ -1835,7 +1835,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                       <Input
                         type="date"
                         value={editingTechnician.health_insurance_expiry_date || ''}
-                        onChange={(e) => setEditingTechnician({...editingTechnician, health_insurance_expiry_date: e.target.value})}
+                        onChange={(e) => setEditingTechnician({ ...editingTechnician, health_insurance_expiry_date: e.target.value })}
                       />
                     </div>
                   </div>
@@ -1844,7 +1844,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                     <Label>Ticket Reference</Label>
                     <Input
                       value={editingTechnician.ticket_ref || ''}
-                      onChange={(e) => setEditingTechnician({...editingTechnician, ticket_ref: e.target.value})}
+                      onChange={(e) => setEditingTechnician({ ...editingTechnician, ticket_ref: e.target.value })}
                       placeholder="e.g., TKT123456"
                     />
                   </div>
@@ -1854,7 +1854,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                       <Label>Flight Number</Label>
                       <Input
                         value={editingTechnician.flight_number || ''}
-                        onChange={(e) => setEditingTechnician({...editingTechnician, flight_number: e.target.value})}
+                        onChange={(e) => setEditingTechnician({ ...editingTechnician, flight_number: e.target.value })}
                         placeholder="e.g., EK201"
                       />
                     </div>
@@ -1863,7 +1863,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                       <Label>Airline</Label>
                       <Input
                         value={editingTechnician.airline || ''}
-                        onChange={(e) => setEditingTechnician({...editingTechnician, airline: e.target.value})}
+                        onChange={(e) => setEditingTechnician({ ...editingTechnician, airline: e.target.value })}
                         placeholder="e.g., Emirates"
                       />
                     </div>
@@ -1885,7 +1885,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                     <Input
                       type="date"
                       value={editingTechnician.exit_date || ''}
-                      onChange={(e) => setEditingTechnician({...editingTechnician, exit_date: e.target.value})}
+                      onChange={(e) => setEditingTechnician({ ...editingTechnician, exit_date: e.target.value })}
                     />
                     <p className="text-xs text-gray-500">Date when employment was terminated</p>
                   </div>
@@ -1896,7 +1896,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                       type="date"
                       required
                       value={editingTechnician.expected_country_exit_date || ''}
-                      onChange={(e) => setEditingTechnician({...editingTechnician, expected_country_exit_date: e.target.value})}
+                      onChange={(e) => setEditingTechnician({ ...editingTechnician, expected_country_exit_date: e.target.value })}
                     />
                     <p className="text-xs text-gray-500">When is the technician expected to leave the country?</p>
                   </div>
@@ -1904,7 +1904,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                   <Alert className="bg-orange-50 border-orange-200">
                     <AlertCircle className="h-4 w-4 text-orange-600" />
                     <AlertDescription className="text-orange-800 text-sm">
-                      <strong>Pending Exit Status:</strong> Technician remains in camp and occupies a bed until they actually leave the country. 
+                      <strong>Pending Exit Status:</strong> Technician remains in camp and occupies a bed until they actually leave the country.
                       Track their departure on the Dashboard to ensure timely exit.
                     </AlertDescription>
                   </Alert>
@@ -1918,7 +1918,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                     <Input
                       type="date"
                       value={editingTechnician.exit_date || ''}
-                      onChange={(e) => setEditingTechnician({...editingTechnician, exit_date: e.target.value})}
+                      onChange={(e) => setEditingTechnician({ ...editingTechnician, exit_date: e.target.value })}
                     />
                   </div>
 
@@ -1928,7 +1928,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                       type="date"
                       required
                       value={editingTechnician.actual_country_exit_date || ''}
-                      onChange={(e) => setEditingTechnician({...editingTechnician, actual_country_exit_date: e.target.value})}
+                      onChange={(e) => setEditingTechnician({ ...editingTechnician, actual_country_exit_date: e.target.value })}
                     />
                     <p className="text-xs text-gray-500">When did the technician actually leave the country?</p>
                   </div>
@@ -1949,7 +1949,7 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
                     <Input
                       type="date"
                       value={editingTechnician.exit_date || ''}
-                      onChange={(e) => setEditingTechnician({...editingTechnician, exit_date: e.target.value})}
+                      onChange={(e) => setEditingTechnician({ ...editingTechnician, exit_date: e.target.value })}
                     />
                   </div>
 

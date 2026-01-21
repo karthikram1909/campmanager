@@ -394,6 +394,8 @@ export default function SmartAllocation() {
 
   const availableForSelection = getAvailablePersonnelForSelection();
 
+
+
   const getAvailableBeds = () => {
     if (!campForBeds) return [];
 
@@ -450,15 +452,36 @@ export default function SmartAllocation() {
       return false; // Not available or not meeting criteria
     });
 
-    return availableBeds.map(bed => {
+    const result = availableBeds.map(bed => {
       const room = campRooms.find(r => r.id === bed.room_id);
       const floor = campFloors.find(f => f.id === room?.floor_id);
       const isTemporary = bed.status === 'reserved' && bed.reserved_for && (!bed.technician_id && !bed.external_personnel_id);
       return { ...bed, room, floor, isTemporary };
     });
+
+    console.log("getAvailableBeds Debug:", {
+      campName: campForBeds?.name,
+      totalFloors: campFloors.length,
+      totalRooms: campRooms.length,
+      totalBedsInCamp: campBeds.length,
+      roomsMatchingType: personnelTypeRooms.length,
+      availableBedsCount: availableBeds.length,
+      sampleBedStatus: campBeds.length > 0 ? campBeds[0].status : 'N/A'
+    });
+
+    return result;
   };
 
   const availableBeds = getAvailableBeds();
+
+  console.log("SmartAllocation Render Debug:", {
+    mode,
+    selectedCamp,
+    personnelToAllocateCount: personnelToAllocate.length,
+    availableBedsCount: availableBeds.length,
+    selectedTechniciansCount: selectedTechnicians.length,
+    selectedExternalCount: selectedExternal.length
+  });
 
   // Filter camps based on user's access
   // Filter camps based on user's access
@@ -485,14 +508,21 @@ export default function SmartAllocation() {
   });
 
   const smartAllocate = () => {
+    console.log("Starting Smart Allocation...");
+    setAllocating(true); // Show some visual feedback if possible, though this state is reused for saving
+
     try {
       // If personnel are selected for viewing, run allocation only for them. Otherwise, for all.
+      // In Induction mode, selectedPersonnelForView is empty, so we use personnelToAllocate (which matches selection).
       const personnelToConsider = selectedPersonnelForView.length > 0
-        ? personnelToAllocate.filter(p => selectedPersonnelForView.includes(p.id))
+        ? personnelToAllocate.filter(p => p && selectedPersonnelForView.includes(p.id))
         : personnelToAllocate;
+
+      console.log(`Personnel to consider: ${personnelToConsider.length}`);
 
       if (personnelToConsider.length === 0) {
         alert("Please select personnel to allocate, or ensure there are personnel available for allocation.");
+        setAllocating(false);
         return;
       }
 
@@ -500,11 +530,14 @@ export default function SmartAllocation() {
       const allocationIssues = checkForExistingAllocations(personnelToConsider);
       if (allocationIssues.length > 0) {
         alert(`❌ Cannot proceed - Duplicate bed allocations detected:\n\n${allocationIssues.map(i => i.message).join('\n\n')}\n\nPlease cancel/complete the other transfer requests first.`);
+        setAllocating(false);
         return;
       }
 
+      console.log(`Available beds: ${availableBeds.length}`);
       if (availableBeds.length < personnelToConsider.length) {
         alert(`Not enough beds! Need ${personnelToConsider.length} beds but only ${availableBeds.length} available.`);
+        setAllocating(false);
         return;
       }
 
@@ -513,9 +546,12 @@ export default function SmartAllocation() {
 
       // Check if camp is Induction or Exit camp (use sequential logic)
       const isSequentialCamp = campForBeds && (campForBeds.camp_type === 'induction_camp' || campForBeds.camp_type === 'exit_camp');
+      console.log(`Camp type sequential: ${isSequentialCamp}`);
 
       // Sort personnel based on camp type
       const sortedPersonnelForAllocation = [...personnelToConsider].sort((a, b) => {
+        if (!a || !b) return 0;
+
         if (isSequentialCamp) {
           // Sequential: First come, first served (by arrival date/time)
           const aDate = a.actual_arrival_date || a.expected_arrival_date || '';
@@ -558,6 +594,7 @@ export default function SmartAllocation() {
             occupant = externalPersonnel.find(e => e.id === bed.external_personnel_id);
             occupantType = 'external';
           }
+
           if (occupant) {
             if (!currentRoomOccupantsMap.has(bed.room_id)) {
               currentRoomOccupantsMap.set(bed.room_id, []);
@@ -584,7 +621,10 @@ export default function SmartAllocation() {
 
       const allocationDebug = []; // Track why beds are rejected
 
+      console.log("Starting allocation loop...");
       for (const person of sortedPersonnelForAllocation) {
+        if (!person) continue;
+
         let bestBed = null;
         let bestScore = -Infinity;
         const rejectionReasons = []; // Track reasons for this specific person
@@ -593,16 +633,18 @@ export default function SmartAllocation() {
         let age = null;
         if (person.type === 'technician' && person.date_of_birth) {
           const dob = new Date(person.date_of_birth);
-          const today = new Date();
-          age = today.getFullYear() - dob.getFullYear();
-          const monthDiff = today.getMonth() - dob.getMonth();
-          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
-            age--;
+          if (!isNaN(dob.getTime())) {
+            const today = new Date();
+            age = today.getFullYear() - dob.getFullYear();
+            const monthDiff = today.getMonth() - dob.getMonth();
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+              age--;
+            }
           }
         }
 
         if (isSequentialCamp) {
-          // Sequential allocation for Induction/Exit camps - first come, first served
+          // Sequential allocation logic...
           let bedsChecked = 0;
           for (const bed of sortedBedsForSequential) {
             if (usedBeds.has(bed.id)) continue;
@@ -689,8 +731,7 @@ export default function SmartAllocation() {
             }
 
             // 3. Room type matching (technician, external, TR staff)
-            // Different occupant types CANNOT be mixed in the same room is enforced only if preference is checked
-            // HOWEVER: Staff only rooms are always strictly for staff
+            // Should verify room occupant_type logic here...
             const oType = room.occupant_type || 'mixed';
 
             if (oType === 'staff_only') {
@@ -728,8 +769,8 @@ export default function SmartAllocation() {
 
             let score = 0;
 
-            const currentDBOccupants = (currentRoomOccupantsMap.get(room.id) || []).map(o => o.personnel);
-            const tentativelyAllocated = allocations.filter(a => a.bed && a.bed.room_id === room.id).map(a => a.personnel);
+            const currentDBOccupants = (currentRoomOccupantsMap.get(room.id) || []).map(o => o.personnel).filter(Boolean);
+            const tentativelyAllocated = allocations.filter(a => a.bed && a.bed.room_id === room.id).map(a => a.personnel).filter(Boolean);
             const allOccupants = [...currentDBOccupants, ...tentativelyAllocated];
 
             // 4. Room utilization - prefer rooms with existing occupants of same group
@@ -739,20 +780,23 @@ export default function SmartAllocation() {
 
             if (allOccupants.length > 0) {
               const combinedOccupants = [person, ...allOccupants];
-              const allSameNationality = combinedOccupants.every(o => o.nationality === person.nationality);
-              const allSameState = combinedOccupants.every(o => o.state === person.state);
+
+              // Safe checks with optional chaining
+              const allSameNationality = combinedOccupants.every(o => o && o.nationality === person.nationality);
+              const allSameState = combinedOccupants.every(o => o && o.state === person.state);
               const allSameLanguage = combinedOccupants.every(o => {
-                // Handle multi-select language (comma-separated)
+                if (!o) return false;
                 const personLangs = (person.language_preference || '').split(',').map(l => l.trim()).filter(Boolean);
                 const oLangs = (o.language_preference || '').split(',').map(l => l.trim()).filter(Boolean);
                 return personLangs.length > 0 && oLangs.length > 0 && personLangs.some(pl => oLangs.includes(pl));
               });
-              const allSameTrade = person.type === 'technician' && combinedOccupants.every(o => o.type === 'technician' && o.trade === person.trade);
-              const allSameShift = person.type === 'technician' && combinedOccupants.every(o => o.type === 'technician' && (o.shift || 'day') === (person.shift || 'day'));
+              const allSameTrade = person.type === 'technician' && combinedOccupants.every(o => o && o.type === 'technician' && o.trade === person.trade);
+              const allSameShift = person.type === 'technician' && combinedOccupants.every(o => o && o.type === 'technician' && (o.shift || 'day') === (person.shift || 'day'));
 
               // Strict nationality grouping
               if (preferences.nationalityGrouping && !allSameNationality) {
-                continue; // Skip this bed if nationalities don't match
+                // rejectionReasons.push(`Nationality mismatch in room`); // Optional: add detailed reason
+                continue;
               }
 
               // Scoring for matching attributes
@@ -781,7 +825,7 @@ export default function SmartAllocation() {
         }
 
         if (bestBed) {
-          const personType = person.type; // Use the 'type' property added in getPersonnelToAllocate
+          const personType = person.type;
           allocations.push({
             type: personType,
             personnel: person,
@@ -801,16 +845,20 @@ export default function SmartAllocation() {
           // No bed found for this person - save rejection reasons
           allocationDebug.push({
             person: `${person.full_name} (${person.type === 'technician' ? person.employee_id : person.company_name})`,
-            reasons: rejectionReasons.length > 0 ? rejectionReasons : ['No suitable beds found']
+            reasons: rejectionReasons.length > 0 ? rejectionReasons : ['No suitable beds found matching criteria']
           });
         }
       }
+
+      console.log(`Allocation complete. Allocated: ${allocations.length}, Failed: ${allocationDebug.length}`);
 
       if (allocations.length < personnelToConsider.length) {
         const unallocatedCount = personnelToConsider.length - allocations.length;
         const over45Count = personnelToConsider.filter(p => {
           if (p.type !== 'technician' || !p.date_of_birth) return false;
           const dob = new Date(p.date_of_birth);
+          if (isNaN(dob.getTime())) return false;
+
           const today = new Date();
           let age = today.getFullYear() - dob.getFullYear();
           const monthDiff = today.getMonth() - dob.getMonth();
@@ -823,17 +871,24 @@ export default function SmartAllocation() {
         let message = `❌ Could only allocate ${allocations.length} out of ${personnelToConsider.length} personnel due to constraints.\n\n`;
 
         if (allocationDebug.length > 0) {
-          message += `🔍 REJECTION DETAILS:\n\n`;
-          allocationDebug.forEach((debug, idx) => {
+          message += `🔍 REJECTION DETAILS (First 3 failed):\n\n`;
+          allocationDebug.slice(0, 3).forEach((debug, idx) => {
             message += `${idx + 1}. ${debug.person}:\n`;
-            debug.reasons.slice(0, 5).forEach(reason => {
+
+            // Show distinct reasons to avoid clutter
+            const uniqueReasons = [...new Set(debug.reasons)];
+            uniqueReasons.slice(0, 3).forEach(reason => {
               message += `   • ${reason}\n`;
             });
-            if (debug.reasons.length > 5) {
-              message += `   ... and ${debug.reasons.length - 5} more conflicts\n`;
+            if (uniqueReasons.length > 3) {
+              message += `   ... and ${uniqueReasons.length - 3} more reasons\n`;
             }
             message += `\n`;
           });
+
+          if (allocationDebug.length > 3) {
+            message += `... and ${allocationDebug.length - 3} others failed.\n`;
+          }
         }
 
         if (over45Count > 0) {
@@ -851,9 +906,11 @@ export default function SmartAllocation() {
 
       setAllocationResult(allocations);
       setShowPreview(true);
+      setAllocating(false);
     } catch (error) {
       console.error("Crash in smartAllocate:", error);
-      alert(`Programmatic Error: ${error.message}`);
+      alert(`Programmatic Error in Smart Allocation: ${error.message}\n\nSee console for details.`);
+      setAllocating(false);
     }
   };
 

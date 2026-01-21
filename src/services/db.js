@@ -70,6 +70,17 @@ const createEntityHandler = (entityName) => {
                 console.error(`Error listing ${entityName}:`, error);
                 throw error;
             }
+
+            // Map entity_id back to specific IDs for shared tables
+            if (data && (entityName === 'TechnicianDocument' || entityName === 'CampDocument')) {
+                return data.map(item => {
+                    const mapped = { ...item };
+                    if (entityName === 'TechnicianDocument') mapped.technician_id = item.entity_id;
+                    if (entityName === 'CampDocument') mapped.camp_id = item.entity_id;
+                    return mapped;
+                });
+            }
+
             return data || [];
         },
 
@@ -93,16 +104,35 @@ const createEntityHandler = (entityName) => {
                 console.error(`Error filtering ${entityName}:`, error);
                 throw error;
             }
+
+            // Map entity_id back to specific IDs for shared tables
+            if (data && (entityName === 'TechnicianDocument' || entityName === 'CampDocument')) {
+                return data.map(item => {
+                    const mapped = { ...item };
+                    if (entityName === 'TechnicianDocument') mapped.technician_id = item.entity_id;
+                    if (entityName === 'CampDocument') mapped.camp_id = item.entity_id;
+                    return mapped;
+                });
+            }
+
             return data || [];
         },
 
         create: async (data) => {
             let payload = { ...data };
-            // Inject entity_type for shared tables
+            // Inject entity_type and map IDs for shared tables
             if (entityName === 'TechnicianDocument') {
                 payload.entity_type = 'technician';
+                if (payload.technician_id) {
+                    payload.entity_id = payload.technician_id;
+                    delete payload.technician_id;
+                }
             } else if (entityName === 'CampDocument') {
                 payload.entity_type = 'camp';
+                if (payload.camp_id) {
+                    payload.entity_id = payload.camp_id;
+                    delete payload.camp_id;
+                }
             }
 
             const { data: created, error } = await supabase
@@ -149,9 +179,23 @@ const createEntityHandler = (entityName) => {
         bulkCreate: async (dataArray) => {
             let payload = dataArray;
             if (entityName === 'TechnicianDocument') {
-                payload = dataArray.map(d => ({ ...d, entity_type: 'technician' }));
+                payload = dataArray.map(d => {
+                    const mapped = { ...d, entity_type: 'technician' };
+                    if (mapped.technician_id) {
+                        mapped.entity_id = mapped.technician_id;
+                        delete mapped.technician_id;
+                    }
+                    return mapped;
+                });
             } else if (entityName === 'CampDocument') {
-                payload = dataArray.map(d => ({ ...d, entity_type: 'camp' }));
+                payload = dataArray.map(d => {
+                    const mapped = { ...d, entity_type: 'camp' };
+                    if (mapped.camp_id) {
+                        mapped.entity_id = mapped.camp_id;
+                        delete mapped.camp_id;
+                    }
+                    return mapped;
+                });
             }
 
             const { data: created, error } = await supabase

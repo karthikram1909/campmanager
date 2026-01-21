@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  User, Building2, Briefcase, FileText, Activity, AlertTriangle,
+  User, Building2, Briefcase, FileText, Activity, AlertTriangle, AlertCircle,
   ArrowLeftRight, Calendar, Phone, MapPin, Printer,
   ArrowLeft, Shield, Heart, Plane, CheckCircle2
 } from "lucide-react";
@@ -19,7 +19,7 @@ export default function TechnicianDetailReport() {
   const urlParams = new URLSearchParams(window.location.search);
   const technicianId = urlParams.get('technician_id');
 
-  const { data: technician } = useQuery({
+  const { data: technician, isLoading: isLoadingTechnician } = useQuery({
     queryKey: ['technician', technicianId],
     queryFn: async () => {
       const techs = await base44.entities.Technician.list();
@@ -150,7 +150,25 @@ export default function TechnicianDetailReport() {
     window.print();
   };
 
-  if (!technician) {
+  if (!technicianId) {
+    return (
+      <div className="p-6 md:p-8 min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto">
+          <User className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">No Technician Selected</h2>
+          <p className="text-gray-600 mb-6">Please select a technician from the main list to view their detailed report.</p>
+          <Link to={createPageUrl("Technicians")}>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Go to Technicians List
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoadingTechnician) {
     return (
       <div className="p-6 md:p-8 min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -160,6 +178,33 @@ export default function TechnicianDetailReport() {
       </div>
     );
   }
+
+  if (!technician) {
+    return (
+      <div className="p-6 md:p-8 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Technician Not Found</h2>
+          <p className="text-gray-600 mb-6">We couldn't find the technician profile you requested.</p>
+          <Link to={createPageUrl("Technicians")}>
+            <Button variant="outline">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Return to List
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // ... (other queries remain the same) ... Since I can't see them all in this chunk, I will just focus on the render logic below.
+  // Wait, I need to make sure I don't break the variable scopes.
+  // The user only sees lines 1-800. I need to be careful.
+  // Actually, I should just modify the render block at line 153.
+  // But I need 'isLoadingTechnician' from the query result.
+
+  // Let's first update line 22 to extract isLoading.
+
 
   const camp = camps.find(c => c.id === technician.camp_id);
   const project = projects.find(p => p.id === technician.project_id);
