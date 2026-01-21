@@ -308,10 +308,21 @@ const appLogs = {
     }
 };
 
+const functions = {
+    invoke: async (functionName, body) => {
+        const { data, error } = await supabase.functions.invoke(functionName, {
+            body: body
+        });
+        if (error) throw error;
+        return data;
+    }
+};
+
 export const db = {
     entities,
     auth,
     integrations,
+    functions,
     appLogs
 };
 

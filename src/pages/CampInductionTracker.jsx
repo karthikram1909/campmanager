@@ -141,12 +141,12 @@ export default function CampInductionTracker() {
       if (person.status !== 'active' || !person.actual_arrival_date) return false;
       if (person.camp_induction_required === false) return false;
       if (person.camp_induction_completed === true) return false;
-      
+
       // Exclude personnel at Sajja Camp who completed Sajja pre-induction (that IS their camp induction)
       if (sajjaCamp && person.camp_id === sajjaCamp.id && person.type === 'technician' && person.induction_completion_date) {
         return false;
       }
-      
+
       if (selectedCamp !== 'all' && person.camp_id !== selectedCamp) return false;
       return true;
     }).map(person => {
@@ -225,7 +225,48 @@ export default function CampInductionTracker() {
     }
   });
 
-  const overdueCount = sortedInduction.filter(p => p.isOverdue).length;
+  const overdueCount = sortedInduction.filter(p => p.hoursSinceArrival > 24).length;
+  const warningCount = sortedInduction.filter(p => p.hoursSinceArrival > 12 && p.hoursSinceArrival <= 24).length;
+
+  const handleSendOverdueAlerts = async () => {
+    const alertsToSend = sortedInduction.filter(p => p.hoursSinceArrival > 12).map(p => ({
+      ...p,
+      alertType: p.hoursSinceArrival > 24 ? 'Critical Overdue (>24h)' : 'Warning (>12h)'
+    }));
+
+    if (alertsToSend.length === 0) return;
+
+    const confirmSend = window.confirm(
+      `Send alerts for ${alertsToSend.length} technicians exceeding 12 hours?\n\n` +
+      `• Critical (>24h): ${overdueCount}\n` +
+      `• Warning (>12h): ${warningCount}`
+    );
+
+    if (!confirmSend) return;
+
+    setProcessing(true);
+    try {
+      // Simulate calling the notification service
+      await base44.functions.invoke('notifyOnboardingTeam', {
+        type: 'overdue_alert',
+        technicians: alertsToSend.map(t => ({
+          id: t.id,
+          name: t.full_name,
+          employee_id: t.employee_id || t.company_name,
+          hours: t.hoursSinceArrival,
+          camp_id: t.camp_id
+        })),
+        timestamp: new Date().toISOString()
+      });
+
+      alert(`✅ Alerts sent to Onboarding Team for ${alertsToSend.length} technicians.`);
+    } catch (error) {
+      console.error("Failed to send alerts:", error);
+      alert("Failed to send alerts. Check console for details.");
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const handleMarkComplete = async () => {
     if (!selectedPersonnel) return;
@@ -331,7 +372,7 @@ export default function CampInductionTracker() {
       }
 
       alert(`✅ Batch Induction Complete!\n\n✓ ${successCount} personnel inducted successfully${errorCount > 0 ? `\n✗ ${errorCount} failed` : ''}`);
-      
+
       setSelectedIds([]);
       setShowBulkDialog(false);
       setBulkInductionDate(new Date().toISOString().split('T')[0]);
@@ -353,7 +394,7 @@ export default function CampInductionTracker() {
     const camp = camps.find(c => c.id === p.camp_id);
     return camp?.name || '-';
   }))].sort();
-  const uniqueArrivalDates = [...new Set(allPendingInduction.map(p => 
+  const uniqueArrivalDates = [...new Set(allPendingInduction.map(p =>
     p.actual_arrival_date ? format(parseISO(p.actual_arrival_date), 'MMM dd, yyyy') : '-'
   ))].sort();
   const uniqueNationalities = [...new Set(allPendingInduction.map(p => p.nationality || '-'))].sort();
@@ -380,7 +421,7 @@ export default function CampInductionTracker() {
     setFilterTimeStatus([]);
   };
 
-  const hasActiveFilters = 
+  const hasActiveFilters =
     filterName.length > 0 ||
     filterEmployeeId.length > 0 ||
     filterType.length > 0 ||
@@ -499,8 +540,8 @@ export default function CampInductionTracker() {
         <Alert className="border-blue-200 bg-blue-50">
           <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-blue-900 text-sm">
-            <strong>📍 Step 4 of 4: Camp Induction (Final Transfer Step - 24 hours max)</strong><br/>
-            Complete camp-specific safety briefings, rules, emergency procedures → Upload attendance/test reports → Mark complete → Transfer complete!<br/>
+            <strong>📍 Step 4 of 4: Camp Induction (Final Transfer Step - 24 hours max)</strong><br />
+            Complete camp-specific safety briefings, rules, emergency procedures → Upload attendance/test reports → Mark complete → Transfer complete!<br />
             <span className="text-xs italic">Note: Also serves as Step 6 of 6 for Onboarding workflow</span>
           </AlertDescription>
         </Alert>
@@ -791,11 +832,10 @@ export default function CampInductionTracker() {
                     return (
                       <tr
                         key={person.uniqueId}
-                        className={`border-b border-gray-200 hover:bg-blue-50 transition-colors ${
-                          isSelected ? 'bg-blue-100' :
-                          person.isOverdue ? 'bg-red-50' : 
-                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                        }`}
+                        className={`border-b border-gray-200 hover:bg-blue-50 transition-colors ${isSelected ? 'bg-blue-100' :
+                            person.isOverdue ? 'bg-red-50' :
+                              index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                          }`}
                       >
                         <td className="px-2 py-2 text-center border-r border-gray-200">
                           <Checkbox

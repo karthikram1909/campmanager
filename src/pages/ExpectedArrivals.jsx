@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { UserCheck, Calendar as CalendarIconImport, Users, AlertCircle, CheckCircle2, Download, Printer, ArrowUpDown, Filter, X, FileText } from "lucide-react";
+import { UserCheck, Calendar as CalendarIconImport, Users, AlertCircle, CheckCircle2, Download, Printer, ArrowUpDown, Filter, X, FileText, Upload } from "lucide-react";
 import { format, parseISO, isToday, isPast, isFuture, isValid } from "date-fns";
 import { formatDate as formatDateDisplay, parseDate } from "@/components/utils/dateFormatter";
 import { Calendar } from "@/components/ui/calendar";
@@ -17,7 +17,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/components/ui/use-toast";
+
+
 export default function ExpectedArrivals() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [confirmingIds, setConfirmingIds] = useState([]);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -31,9 +37,25 @@ export default function ExpectedArrivals() {
   const [languagePreferences, setLanguagePreferences] = useState([]);
   const [whatsappMobile, setWhatsappMobile] = useState('');
   const [whatsappCountryCode, setWhatsappCountryCode] = useState('+971');
+
+  // New State Variables for Enhanced Onboarding Data
+  const [secondaryWhatsappMobile, setSecondaryWhatsappMobile] = useState('');
+  const [secondaryWhatsappCountryCode, setSecondaryWhatsappCountryCode] = useState('+971');
+
+  const [emergencyContactNo1, setEmergencyContactNo1] = useState('');
+  const [emergencyContactRel1, setEmergencyContactRel1] = useState('');
+
+  const [emergencyContactNo2, setEmergencyContactNo2] = useState('');
+  const [emergencyContactRel2, setEmergencyContactRel2] = useState('');
+
+  const [legalNomineeName, setLegalNomineeName] = useState('');
+  const [legalNomineeRel, setLegalNomineeRel] = useState('');
+  const [legalNomineeFile, setLegalNomineeFile] = useState(null);
+  const [legalNomineeFileUrl, setLegalNomineeFileUrl] = useState('');
+
   const [workExperienceUAE, setWorkExperienceUAE] = useState('0');
   const [workExperienceOther, setWorkExperienceOther] = useState('0');
-  
+
   const [sortField, setSortField] = useState("expected_arrival_date");
   const [sortDirection, setSortDirection] = useState("asc");
 
@@ -83,7 +105,7 @@ export default function ExpectedArrivals() {
   });
 
   const confirmArrivalMutation = useMutation({
-    mutationFn: ({ id, ...data }) => 
+    mutationFn: ({ id, ...data }) =>
       base44.entities.Technician.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['technicians'] });
@@ -123,8 +145,8 @@ export default function ExpectedArrivals() {
   };
 
   // Filter for pending arrivals - show those picked up from airport
-  const pendingArrivals = technicians.filter(t => 
-    t.status === 'pending_arrival' && 
+  const pendingArrivals = technicians.filter(t =>
+    t.status === 'pending_arrival' &&
     t.pickup_status === 'picked_up'
   );
 
@@ -132,7 +154,7 @@ export default function ExpectedArrivals() {
   let filteredArrivals = pendingArrivals.filter(tech => {
     const camp = camps.find(c => c.id === tech.camp_id);
     const mealPref = mealPreferences.find(m => m.id === tech.meal_preference_id);
-    
+
     if (filterEmployeeId.length > 0 && !filterEmployeeId.includes(tech.employee_id || '-')) return false;
     if (filterFullName.length > 0 && !filterFullName.includes(tech.full_name || '-')) return false;
     if (filterNationality.length > 0 && !filterNationality.includes(tech.nationality || '-')) return false;
@@ -143,11 +165,11 @@ export default function ExpectedArrivals() {
     if (filterMealPreference.length > 0 && !filterMealPreference.includes(mealPref?.name || '-')) return false;
     if (filterStatus.length > 0) {
       const status = safeIsToday(tech.expected_arrival_date) ? 'Today' :
-                     safeIsFuture(tech.expected_arrival_date) ? 'Future' :
-                     safeIsPast(tech.expected_arrival_date) ? 'Overdue' : 'Unknown';
+        safeIsFuture(tech.expected_arrival_date) ? 'Future' :
+          safeIsPast(tech.expected_arrival_date) ? 'Overdue' : 'Unknown';
       if (!filterStatus.includes(status)) return false;
     }
-    
+
     return true;
   });
 
@@ -183,7 +205,7 @@ export default function ExpectedArrivals() {
 
   const arrivingToday = sortedArrivals.filter(t => safeIsToday(t.expected_arrival_date));
   const arrivingFuture = sortedArrivals.filter(t => safeIsFuture(t.expected_arrival_date));
-  const overdueArrivals = sortedArrivals.filter(t => 
+  const overdueArrivals = sortedArrivals.filter(t =>
     safeIsPast(t.expected_arrival_date) && !safeIsToday(t.expected_arrival_date)
   );
 
@@ -244,7 +266,7 @@ export default function ExpectedArrivals() {
     setSelectedTechnician(tech);
     setSelectedMealPreference(tech.meal_preference_id || '');
     setLanguagePreferences(tech.language_preference ? tech.language_preference.split(',').map(l => l.trim()) : []);
-    
+
     // Parse WhatsApp number if exists
     if (tech.whatsapp_mobile) {
       const match = tech.whatsapp_mobile.match(/^(\+\d+)(.+)$/);
@@ -259,10 +281,39 @@ export default function ExpectedArrivals() {
       setWhatsappCountryCode('+971');
       setWhatsappMobile('');
     }
-    
+
+    // Parse Secondary WhatsApp
+    if (tech.secondary_whatsapp) {
+      const match = tech.secondary_whatsapp.match(/^(\+\d+)(.+)$/);
+      if (match) {
+        setSecondaryWhatsappCountryCode(match[1]);
+        setSecondaryWhatsappMobile(match[2].trim());
+      } else {
+        setSecondaryWhatsappCountryCode('+971');
+        setSecondaryWhatsappMobile('');
+      }
+    } else {
+      setSecondaryWhatsappCountryCode('+971');
+      setSecondaryWhatsappMobile('');
+    }
+
+    // Set Emergency Contacts
+    setEmergencyContactNo1(tech.emergency_contact_no || '');
+    setEmergencyContactRel1(tech.emergency_contact_no_relationship || '');
+
+    setEmergencyContactNo2(tech.emergency_contact_no_2 || '');
+    setEmergencyContactRel2(tech.emergency_contact_no_2_relationship || '');
+
+    // Set Legal Nominee
+    setLegalNomineeName(tech.legal_nominee_name || '');
+    setLegalNomineeRel(tech.nominee_relationship || '');
+    setLegalNomineeFileUrl(tech.legal_nominee_attachment_url || '');
+    setLegalNomineeFile(null);
+
+
     setWorkExperienceUAE(tech.work_experience_uae || '0');
     setWorkExperienceOther(tech.work_experience_other || '0');
-    
+
     try {
       const now = new Date();
       if (isValid(now)) {
@@ -303,8 +354,20 @@ export default function ExpectedArrivals() {
     setConfirmingIds([...confirmingIds, selectedTechnician.id]);
     try {
       const sajjaCamp = camps.find(c => c.code?.toLowerCase() === 'sajja' || c.name?.toLowerCase().includes('sajja'));
-      
-      const updateData = { 
+
+      // Handle File Upload for Legal Nominee Form
+      let finalLegalNomineeUrl = legalNomineeFileUrl;
+      if (legalNomineeFile) {
+        try {
+          const { file_url } = await base44.integrations.Core.UploadFile({ file: legalNomineeFile });
+          finalLegalNomineeUrl = file_url;
+        } catch (uploadError) {
+          console.error("Failed to upload legal nominee form:", uploadError);
+          alert("Failed to upload Legal Nominee Form. Continuing without it.");
+        }
+      }
+
+      const updateData = {
         status: 'active',
         pickup_status: 'arrived_at_camp',
         actual_arrival_date: actualArrivalDate,
@@ -314,6 +377,17 @@ export default function ExpectedArrivals() {
         biometric_capture_time: biometricCaptureTime || null,
         language_preference: languagePreferences.length > 0 ? languagePreferences.join(', ') : null,
         whatsapp_mobile: whatsappMobile ? `${whatsappCountryCode}${whatsappMobile}` : null,
+        secondary_whatsapp: secondaryWhatsappMobile ? `${secondaryWhatsappCountryCode}${secondaryWhatsappMobile}` : null,
+
+        emergency_contact_no: emergencyContactNo1 || null,
+        emergency_contact_no_relationship: emergencyContactRel1 || null,
+        emergency_contact_no_2: emergencyContactNo2 || null,
+        emergency_contact_no_2_relationship: emergencyContactRel2 || null,
+
+        legal_nominee_name: legalNomineeName || null,
+        nominee_relationship: legalNomineeRel || null,
+        legal_nominee_attachment_url: finalLegalNomineeUrl || null,
+
         work_experience_uae: workExperienceUAE || '0',
         work_experience_other: workExperienceOther || '0',
       };
@@ -323,10 +397,72 @@ export default function ExpectedArrivals() {
         updateData.induction_status = 'pre_induction';
       }
 
-      await confirmArrivalMutation.mutateAsync({ 
+      await confirmArrivalMutation.mutateAsync({
         id: selectedTechnician.id,
         ...updateData
       });
+
+      // Real WhatsApp Welcome Message Integration
+      try {
+        let userPhone = whatsappMobile.replace(/\D/g, '');
+        if (whatsappCountryCode !== '+91') {
+          const countryCodeClean = whatsappCountryCode.replace(/\D/g, '');
+          userPhone = countryCodeClean + userPhone;
+        }
+
+        const messageText = `Welcome ${selectedTechnician.full_name},\n\nYour arrival at the camp has been successfully confirmed!\n\n*Next Steps:*\n1. Bed Allocation (Camp Boss will assign your bed shortly)\n2. Welcome Kit Issuance\n3. C3 Card Collection\n4. Meal Preference Setup\n\nPlease proceed to the induction area.`;
+
+        // Create hidden iframe if it doesn't exist (required for "unblockable" hidden submission)
+        if (!document.getElementById('whatsapp_iframe')) {
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.id = 'whatsapp_iframe';
+          iframe.name = 'whatsapp_iframe';
+          document.body.appendChild(iframe);
+        }
+
+        const form = document.createElement('form');
+        form.method = 'GET';
+        form.action = 'https://savetron.2440066.xyz/savetron_123';
+        form.target = 'whatsapp_iframe'; // Target the hidden iframe
+        form.style.display = 'none';
+
+        const addField = (name, value) => {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = name;
+          input.value = value;
+          form.appendChild(input);
+        };
+
+        addField('phone', userPhone);
+        addField('instance_id', '692B487D285FA');
+        addField('access_token', '66d137a48208a');
+        addField('message', messageText);
+
+        document.body.appendChild(form);
+        form.submit();
+
+        console.log(`WhatsApp notification sent to ${userPhone} (Country: ${whatsappCountryCode})`);
+        toast({
+          title: "WhatsApp Sent",
+          description: `Welcome message sent to ${whatsappCountryCode} ${whatsappMobile}`
+        });
+
+        // Cleanup form after a moment
+        setTimeout(() => {
+          document.body.removeChild(form);
+        }, 1000);
+
+      } catch (waError) {
+        console.error("Error sending WhatsApp notification:", waError);
+        // We don't block the confirmation flow if WhatsApp fails, just log it
+      }
+
+      // Bed Allocation Prompt
+      if (window.confirm("Arrival Confirmed & Welcome Message Sent.\n\nDo you want to proceed to Bed Allocation for this technician?")) {
+        navigate("/SmartAllocation");
+      }
     } catch (err) {
       console.error('Error confirming arrival:', err);
       alert(`Failed to confirm arrival for ${selectedTechnician.full_name}. Please try again.`);
@@ -342,6 +478,16 @@ export default function ExpectedArrivals() {
       setLanguagePreferences([]);
       setWhatsappMobile('');
       setWhatsappCountryCode('+971');
+      setSecondaryWhatsappMobile('');
+      setSecondaryWhatsappCountryCode('+971');
+      setEmergencyContactNo1('');
+      setEmergencyContactRel1('');
+      setEmergencyContactNo2('');
+      setEmergencyContactRel2('');
+      setLegalNomineeName('');
+      setLegalNomineeRel('');
+      setLegalNomineeFile(null);
+      setLegalNomineeFileUrl('');
       setWorkExperienceUAE('0');
       setWorkExperienceOther('0');
     }
@@ -393,10 +539,10 @@ export default function ExpectedArrivals() {
     }
 
     setConfirmingIds([...selectedTechnicians]); // Mark all selected as confirming
-    
+
     try {
       const sajjaCamp = camps.find(c => c.code?.toLowerCase() === 'sajja' || c.name?.toLowerCase().includes('sajja'));
-      
+
       let successCount = 0;
       let errorCount = 0;
       const errors = [];
@@ -414,7 +560,7 @@ export default function ExpectedArrivals() {
         }
 
         try {
-          const updateData = { 
+          const updateData = {
             status: 'active',
             pickup_status: 'arrived_at_camp',
             actual_arrival_date: bulkArrivalDate,
@@ -426,7 +572,7 @@ export default function ExpectedArrivals() {
             updateData.induction_status = 'pre_induction';
           }
 
-          await confirmArrivalMutation.mutateAsync({ 
+          await confirmArrivalMutation.mutateAsync({
             id: techId,
             ...updateData
           });
@@ -466,14 +612,14 @@ export default function ExpectedArrivals() {
 
   const exportToCSV = () => {
     const headers = ['Employee ID', 'Full Name', 'Nationality', 'Gender', 'Trade', 'Department', 'Camp', 'State', 'Marital Status', 'Language Preference', 'WhatsApp Mobile', 'Emergency Contact', 'Legal Nominee', 'Passport No', 'Passport Expiry', 'Health Insurance No', 'Health Insurance Expiry', 'Meal Preference', 'Expected Date', 'Expected Time', 'Actual Arrival Date', 'Actual Arrival Time', 'Biometric Capture Date', 'Biometric Capture Time', 'Status']; // Added biometric fields
-    
+
     const data = sortedArrivals.map(tech => {
       const camp = camps.find(c => c.id === tech.camp_id);
       const mealPref = mealPreferences.find(m => m.id === tech.meal_preference_id);
       const status = safeIsToday(tech.expected_arrival_date) ? 'Today' :
-                     safeIsFuture(tech.expected_arrival_date) ? 'Future' :
-                     'Overdue';
-      
+        safeIsFuture(tech.expected_arrival_date) ? 'Future' :
+          'Overdue';
+
       return [
         tech.employee_id,
         tech.full_name,
@@ -503,10 +649,10 @@ export default function ExpectedArrivals() {
       ];
     });
 
-    const csv = [headers, ...data].map(row => 
+    const csv = [headers, ...data].map(row =>
       row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
     ).join('\n');
-    
+
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -665,7 +811,7 @@ export default function ExpectedArrivals() {
         <Alert className="border-blue-200 bg-blue-50 no-print">
           <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-blue-900 text-sm">
-            <strong>📍 Step 3 of 6: Confirm Arrivals at Camp</strong><br/>
+            <strong>📍 Step 3 of 6: Confirm Arrivals at Camp</strong><br />
             After airport pickup, confirm arrival at camp → Capture personal details → Set meal preference → Status changes to "Active" → Next: Smart Allocation (Camp Operations)
           </AlertDescription>
         </Alert>
@@ -677,7 +823,7 @@ export default function ExpectedArrivals() {
           </div>
           <div className="flex gap-2">
             {selectedTechnicians.length > 0 && (
-              <Button 
+              <Button
                 onClick={handleBulkConfirmClick}
                 className="bg-green-600 hover:bg-green-700"
                 size="sm"
@@ -708,7 +854,7 @@ export default function ExpectedArrivals() {
                   <p className="text-2xl font-bold text-green-900">{arrivingToday.length}</p>
                 </div>
                 <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
-                <UserCheck className="w-5 h-5 text-white" />
+                  <UserCheck className="w-5 h-5 text-white" />
                 </div>
               </div>
             </CardContent>
@@ -722,7 +868,7 @@ export default function ExpectedArrivals() {
                   <p className="text-2xl font-bold text-blue-900">{arrivingFuture.length}</p>
                 </div>
                 <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <CalendarIconImport className="w-5 h-5 text-white" />
+                  <CalendarIconImport className="w-5 h-5 text-white" />
                 </div>
               </div>
             </CardContent>
@@ -929,7 +1075,7 @@ export default function ExpectedArrivals() {
                       </Button>
                     </div>
                   </th>
-                  
+
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gradient-to-r from-gray-50 to-gray-100 border-r border-gray-200">
                     <div className="flex items-center justify-between gap-1">
                       <span>Language Pref</span>
@@ -962,7 +1108,7 @@ export default function ExpectedArrivals() {
                       </Button>
                     </div>
                   </th>
-                  
+
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gradient-to-r from-gray-50 to-gray-100 border-r border-gray-200">
                     <div className="flex items-center justify-between gap-1">
                       <span>Passport No</span>
@@ -1075,12 +1221,11 @@ export default function ExpectedArrivals() {
                     return (
                       <tr
                         key={tech.id}
-                        className={`border-b border-gray-200 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 transition-all ${
-                          isSelected ? 'bg-blue-100' :
+                        className={`border-b border-gray-200 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 transition-all ${isSelected ? 'bg-blue-100' :
                           isOverdue ? 'bg-red-50/50' :
-                          isToday ? 'bg-green-50/50' :
-                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-                        }`}
+                            isToday ? 'bg-green-50/50' :
+                              index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                          }`}
                       >
                         <td className="px-3 py-3 text-center border-r border-gray-200 no-print">
                           <Checkbox
@@ -1137,7 +1282,7 @@ export default function ExpectedArrivals() {
                         <td className="px-3 py-3 text-xs text-gray-700 border-r border-gray-200 whitespace-nowrap">
                           {tech.marital_status || '-'}
                         </td>
-                        
+
                         <td className="px-3 py-3 text-xs text-gray-700 border-r border-gray-200 whitespace-nowrap">
                           {tech.language_preference || '-'}
                         </td>
@@ -1150,7 +1295,7 @@ export default function ExpectedArrivals() {
                         <td className="px-3 py-3 text-xs text-gray-700 border-r border-gray-200 whitespace-nowrap">
                           {tech.legal_nominee_name || '-'}
                         </td>
-                        
+
                         <td className="px-3 py-3 text-xs text-gray-700 border-r border-gray-200 whitespace-nowrap">
                           {tech.passport_no || '-'}
                         </td>
@@ -1190,11 +1335,10 @@ export default function ExpectedArrivals() {
                           {tech.biometric_capture_time || '-'}
                         </td>
                         <td className="px-3 py-3 whitespace-nowrap">
-                          <Badge className={`text-xs px-2 py-1 shadow-sm ${
-                            isOverdue ? 'bg-red-600 text-white' :
+                          <Badge className={`text-xs px-2 py-1 shadow-sm ${isOverdue ? 'bg-red-600 text-white' :
                             isToday ? 'bg-green-600 text-white' :
-                            'bg-blue-600 text-white'
-                          }`}>
+                              'bg-blue-600 text-white'
+                            }`}>
                             {isOverdue ? 'Overdue' : isToday ? 'Today' : 'Future'}
                           </Badge>
                         </td>
@@ -1223,7 +1367,7 @@ export default function ExpectedArrivals() {
               Confirm Arrival
             </DialogTitle>
           </DialogHeader>
-          
+
           {selectedTechnician && (
             <div className="space-y-4 py-4">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -1309,7 +1453,7 @@ export default function ExpectedArrivals() {
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button variant="outline" className="w-full justify-start text-left font-normal">
-                          {languagePreferences.length > 0 
+                          {languagePreferences.length > 0
                             ? `${languagePreferences.length} language(s) selected: ${languagePreferences.join(', ')}`
                             : 'Select languages'}
                         </Button>
@@ -1395,48 +1539,134 @@ export default function ExpectedArrivals() {
                     </p>
                   </div>
 
-                  {/* Display Emergency Contact & Legal Nominee (Read-only from Onboarding) */}
-                  {(selectedTechnician.emergency_contact_no || selectedTechnician.legal_nominee_name) && (
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-300">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Emergency Contact & Legal Nominee (From Onboarding)</h4>
-                      <div className="space-y-2 text-sm">
-                        {selectedTechnician.emergency_contact_no && (
-                          <div className="flex justify-between items-center py-1 border-b border-gray-200">
-                            <span className="text-gray-600">Emergency Contact:</span>
-                            <span className="font-medium text-gray-900">
-                              {selectedTechnician.emergency_contact_no}
-                              {selectedTechnician.emergency_contact_no_relationship && (
-                                <span className="text-xs text-gray-500 ml-2">({selectedTechnician.emergency_contact_no_relationship})</span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-                        {selectedTechnician.emergency_contact_no_2 && (
-                          <div className="flex justify-between items-center py-1 border-b border-gray-200">
-                            <span className="text-gray-600">Emergency Contact 2:</span>
-                            <span className="font-medium text-gray-900">
-                              {selectedTechnician.emergency_contact_no_2}
-                              {selectedTechnician.emergency_contact_no_2_relationship && (
-                                <span className="text-xs text-gray-500 ml-2">({selectedTechnician.emergency_contact_no_2_relationship})</span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-                        {selectedTechnician.legal_nominee_name && (
-                          <div className="flex justify-between items-center py-1">
-                            <span className="text-gray-600">Legal Nominee:</span>
-                            <span className="font-medium text-gray-900">
-                              {selectedTechnician.legal_nominee_name}
-                              {selectedTechnician.nominee_relationship && (
-                                <span className="text-xs text-gray-500 ml-2">({selectedTechnician.nominee_relationship})</span>
-                              )}
-                            </span>
-                          </div>
-                        )}
+                  <div className="space-y-4 border-t border-gray-200 pt-4">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <div className="p-1 bg-green-100 rounded">
+                        <Users className="w-3.5 h-3.5 text-green-600" />
                       </div>
-                      <p className="text-xs text-gray-500 mt-3 italic">These details were captured during onboarding and are read-only here.</p>
+                      Contact & Legal Details
+                    </h4>
+
+                    {/* Secondary WhatsApp */}
+                    <div className="space-y-2">
+                      <Label>Secondary WhatsApp (Optional)</Label>
+                      <div className="flex gap-2">
+                        <Select value={secondaryWhatsappCountryCode} onValueChange={setSecondaryWhatsappCountryCode}>
+                          <SelectTrigger className="w-36 bg-gray-50">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="+971">🇦🇪 +971</SelectItem>
+                            <SelectItem value="+91">🇮🇳 +91</SelectItem>
+                            <SelectItem value="+92">🇵🇰 +92</SelectItem>
+                            <SelectItem value="+880">🇧🇩 +880</SelectItem>
+                            <SelectItem value="+63">🇵🇭 +63</SelectItem>
+                            <SelectItem value="+94">🇱🇰 +94</SelectItem>
+                            <SelectItem value="+977">🇳🇵 +977</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="tel"
+                          placeholder="Number"
+                          value={secondaryWhatsappMobile}
+                          onChange={(e) => setSecondaryWhatsappMobile(e.target.value.replace(/\D/g, ''))}
+                          className="flex-1"
+                        />
+                      </div>
                     </div>
-                  )}
+
+                    {/* Emergency Contacts */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {/* Contact 1 */}
+                      <div className="space-y-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Emergency Contact 1</Label>
+                        <div className="space-y-2">
+                          <Input
+                            placeholder="Contact Number"
+                            value={emergencyContactNo1}
+                            onChange={(e) => setEmergencyContactNo1(e.target.value)}
+                            className="bg-white"
+                          />
+                          <Input
+                            placeholder="Relationship (e.g. Father)"
+                            value={emergencyContactRel1}
+                            onChange={(e) => setEmergencyContactRel1(e.target.value)}
+                            className="bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Contact 2 */}
+                      <div className="space-y-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Emergency Contact 2</Label>
+                        <div className="space-y-2">
+                          <Input
+                            placeholder="Contact Number"
+                            value={emergencyContactNo2}
+                            onChange={(e) => setEmergencyContactNo2(e.target.value)}
+                            className="bg-white"
+                          />
+                          <Input
+                            placeholder="Relationship (e.g. Brother)"
+                            value={emergencyContactRel2}
+                            onChange={(e) => setEmergencyContactRel2(e.target.value)}
+                            className="bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Legal Nominee */}
+                    <div className="bg-purple-50 p-4 rounded-lg border border-purple-100 space-y-3">
+                      <Label className="text-sm font-semibold text-purple-900 flex items-center gap-2">
+                        Legal Nominee
+                        <span className="text-[10px] font-normal text-purple-600 bg-white px-2 py-0.5 rounded border border-purple-200">Mandatory</span>
+                      </Label>
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <Input
+                          placeholder="Nominee Name"
+                          value={legalNomineeName}
+                          onChange={(e) => setLegalNomineeName(e.target.value)}
+                          className="bg-white border-purple-200 focus:border-purple-400"
+                        />
+                        <Input
+                          placeholder="Relationship"
+                          value={legalNomineeRel}
+                          onChange={(e) => setLegalNomineeRel(e.target.value)}
+                          className="bg-white border-purple-200 focus:border-purple-400"
+                        />
+                      </div>
+
+                      <div className="pt-2">
+                        <Label className="text-xs text-purple-800 mb-1.5 block">Nominee Form Attachment</Label>
+                        <div className="flex items-center gap-3">
+                          <div className="relative flex-1">
+                            <Input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              className="cursor-pointer file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200"
+                              onChange={(e) => {
+                                if (e.target.files?.[0]) {
+                                  setLegalNomineeFile(e.target.files[0]);
+                                }
+                              }}
+                            />
+                          </div>
+                          {legalNomineeFileUrl && !legalNomineeFile && (
+                            <a
+                              href={legalNomineeFileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs flex items-center gap-1 text-purple-700 hover:underline bg-white px-2 py-1 rounded border border-purple-200"
+                            >
+                              <FileText className="w-3 h-3" />
+                              View Current
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -1484,13 +1714,13 @@ export default function ExpectedArrivals() {
                     {mealPreferences
                       .filter(mp => mp.is_active !== false)
                       .map(mp => (
-                          <SelectItem key={mp.id} value={mp.id}>
-                            <div className="flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full ${mp.type === 'veg' ? 'bg-green-600' : 'bg-red-600'}`}></span>
-                              {mp.name}
-                            </div>
-                          </SelectItem>
-                        ))}
+                        <SelectItem key={mp.id} value={mp.id}>
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${mp.type === 'veg' ? 'bg-green-600' : 'bg-red-600'}`}></span>
+                            {mp.name}
+                          </div>
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1501,17 +1731,26 @@ export default function ExpectedArrivals() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => { 
-                setShowConfirmDialog(false); 
-                setSelectedTechnician(null); 
-                setActualArrivalDate(''); 
-                setActualArrivalTime(''); 
+              onClick={() => {
+                setShowConfirmDialog(false);
+                setSelectedTechnician(null);
+                setActualArrivalDate('');
+                setActualArrivalTime('');
                 setSelectedMealPreference('');
                 setBiometricCaptureDate('');
                 setBiometricCaptureTime('');
                 setLanguagePreferences([]);
                 setWhatsappMobile('');
-                setWhatsappCountryCode('+971');
+                setSecondaryWhatsappMobile('');
+                setSecondaryWhatsappCountryCode('+971');
+                setEmergencyContactNo1('');
+                setEmergencyContactRel1('');
+                setEmergencyContactNo2('');
+                setEmergencyContactRel2('');
+                setLegalNomineeName('');
+                setLegalNomineeRel('');
+                setLegalNomineeFile(null);
+                setLegalNomineeFileUrl('');
                 setWorkExperienceUAE('0');
                 setWorkExperienceOther('0');
               }}
@@ -1519,6 +1758,26 @@ export default function ExpectedArrivals() {
               Cancel
             </Button>
             <Button
+              type="button"
+              variant="secondary"
+              className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200"
+              onClick={() => {
+                let userPhone = whatsappMobile.replace(/\D/g, '');
+                if (whatsappCountryCode !== '+91') {
+                  const countryCodeClean = whatsappCountryCode.replace(/\D/g, '');
+                  userPhone = countryCodeClean + userPhone;
+                }
+
+                const messageText = `TEST MESSAGE: Welcome ${selectedTechnician.full_name}, your arrival has been confirmed.`;
+                const testUrl = `https://savetron.2440066.xyz/savetron_123?phone=${userPhone}&instance_id=692B487D285FA&access_token=66d137a48208a&message=${encodeURIComponent(messageText)}`;
+                console.log("Testing WhatsApp URL:", testUrl);
+                window.open(testUrl, '_blank');
+              }}
+            >
+              Test WhatsApp
+            </Button>
+            <Button
+              type="button"
               onClick={handleConfirmArrival}
               disabled={!actualArrivalDate || !whatsappMobile || confirmArrivalMutation.isLoading}
               className="bg-green-600 hover:bg-green-700"
@@ -1539,7 +1798,7 @@ export default function ExpectedArrivals() {
               Bulk Confirm Arrivals ({selectedTechnicians.length})
             </DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="font-semibold text-gray-900 mb-2">Selected Technicians:</p>
