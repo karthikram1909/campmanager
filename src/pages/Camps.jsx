@@ -114,9 +114,9 @@ export default function Camps() {
 
   // Helper to get ejari expiry date for a camp
   const getEjariExpiryDate = (campId) => {
-    const ejariDocs = campDocuments.filter(doc => 
-      doc.camp_id === campId && 
-      doc.document_type === 'ejari' && 
+    const ejariDocs = campDocuments.filter(doc =>
+      doc.camp_id === campId &&
+      doc.document_type === 'ejari' &&
       doc.expiry_date
     );
     if (ejariDocs.length === 0) return null;
@@ -138,13 +138,13 @@ export default function Camps() {
   const getCampCapacityIssues = (campId) => {
     const campFloors = floors.filter(f => f.camp_id === campId);
     const campRooms = rooms.filter(r => campFloors.some(f => f.id === r.floor_id));
-    
+
     const issues = [];
     campRooms.forEach(room => {
       const roomBeds = beds.filter(b => b.room_id === room.id);
       const actualBeds = roomBeds.length;
       const definedCapacity = room.capacity || 0; // Treat null/undefined capacity as 0
-      
+
       // Flag rooms with zero capacity or mismatched capacity
       if (definedCapacity === 0 || actualBeds !== definedCapacity) {
         const floor = floors.find(f => f.id === room.floor_id);
@@ -159,12 +159,12 @@ export default function Camps() {
         });
       }
     });
-    
+
     return issues;
   };
 
   // Filter camps that have GPS coordinates
-  const campsWithCoordinates = camps.filter(camp => 
+  const campsWithCoordinates = camps.filter(camp =>
     camp.latitude !== null && camp.latitude !== undefined &&
     camp.longitude !== null && camp.longitude !== undefined &&
     typeof camp.latitude === 'number' && typeof camp.longitude === 'number'
@@ -173,9 +173,9 @@ export default function Camps() {
   // Calculate default center (average of all camp coordinates, or Dubai default)
   const defaultCenter = campsWithCoordinates.length > 0
     ? [
-        campsWithCoordinates.reduce((sum, camp) => sum + camp.latitude, 0) / campsWithCoordinates.length,
-        campsWithCoordinates.reduce((sum, camp) => sum + camp.longitude, 0) / campsWithCoordinates.length
-      ]
+      campsWithCoordinates.reduce((sum, camp) => sum + camp.latitude, 0) / campsWithCoordinates.length,
+      campsWithCoordinates.reduce((sum, camp) => sum + camp.longitude, 0) / campsWithCoordinates.length
+    ]
     : [25.2048, 55.2708]; // Dubai default
 
   const createCampMutation = useMutation({
@@ -316,19 +316,19 @@ export default function Camps() {
 
   const handleAddRoom = (e) => {
     e.preventDefault();
-    
+
     // Validate capacity is a positive number
     if (!roomData.capacity || roomData.capacity < 1) {
       alert("Capacity must be at least 1 bed. Please enter a valid number of beds for this room.");
       return;
     }
-    
+
     createRoomMutation.mutate(roomData);
   };
 
   const handleAddBed = (e) => {
     e.preventDefault();
-    
+
     // Check if adding this bed would exceed room capacity
     const room = rooms.find(r => r.id === selectedRoom.id);
     if (room) {
@@ -337,14 +337,14 @@ export default function Camps() {
         alert(`Cannot add bed: Room ${room.room_number} has capacity set to 0. Please update the room capacity first by clicking "Fix Capacity" or editing the room.`);
         return;
       }
-      
+
       const currentBeds = beds.filter(b => b.room_id === room.id).length;
       if (currentBeds >= room.capacity) {
         alert(`Cannot add bed: Room ${room.room_number} is already at full capacity (${room.capacity} beds). Please increase room capacity first.`);
         return;
       }
     }
-    
+
     createBedMutation.mutate(bedData);
   };
 
@@ -359,9 +359,9 @@ export default function Camps() {
   const handleFixCapacity = async (roomId, suggestedCapacity) => {
     const room = rooms.find(r => r.id === roomId);
     if (!room) return;
-    
+
     const actualBeds = beds.filter(b => b.room_id === roomId).length;
-    
+
     // If room has 0 capacity and no beds, ask user to set capacity
     if ((room.capacity === 0 || !room.capacity) && actualBeds === 0) {
       const newCapacity = prompt(`Room ${room.room_number} has 0 capacity. Please enter the correct capacity (number of beds):`, suggestedCapacity || '4');
@@ -370,10 +370,41 @@ export default function Camps() {
       }
       return;
     }
-    
+
     // If room has beds, update capacity to match actual beds, or if capacity is zero but beds exist
     if (confirm(`Update room ${room.room_number} capacity from ${room.capacity} to ${actualBeds} beds?`)) {
       await updateRoomCapacityMutation.mutateAsync({ id: roomId, capacity: actualBeds });
+    }
+  };
+
+  const handleCreateMissingBeds = async (roomId, missingCount) => {
+    const room = rooms.find(r => r.id === roomId);
+    if (!room) return;
+
+    if (confirm(`Automatically create ${missingCount} new beds for Room ${room.room_number}?`)) {
+      const currentBeds = beds.filter(b => b.room_id === roomId);
+      const bedsToCreate = [];
+
+      // Try to find the highest bed number to continue sequence if possible, otherwise just append
+      // This is a simple implementation assuming standard naming "Bed X"
+      let startNumber = currentBeds.length + 1;
+
+      for (let i = 0; i < missingCount; i++) {
+        bedsToCreate.push({
+          room_id: roomId,
+          bed_number: `Bed ${startNumber + i}`,
+          status: 'available',
+          is_lower_berth: (startNumber + i) % 2 !== 0 // Alternating lower/upper as a simple default
+        });
+      }
+
+      try {
+        await bulkCreateBedsMutation.mutateAsync(bedsToCreate);
+        alert(`Successfully created ${missingCount} beds for Room ${room.room_number}.`);
+      } catch (error) {
+        console.error("Error creating beds:", error);
+        alert("Failed to create beds. Please try again.");
+      }
     }
   };
 
@@ -381,26 +412,26 @@ export default function Camps() {
     const campFloors = floors.filter(f => f.camp_id === campId);
     const campRooms = rooms.filter(r => campFloors.some(f => f.id === r.floor_id));
     const campBeds = beds.filter(b => campRooms.some(r => r.id === b.room_id));
-    
+
     // Total stats for the camp
     const occupiedBedsCount = campBeds.filter(b => b.status === 'occupied').length;
     const totalPhysicalBeds = campBeds.length;
     const availableBedsCount = campBeds.filter(b => b.status === 'available').length;
-    
+
     // Technician-specific stats (beds in rooms designated for technician_only)
     const technicianRooms = campRooms.filter(r => r.occupant_type === 'technician_only');
     const technicianRoomBeds = campBeds.filter(b => technicianRooms.some(r => r.id === b.room_id));
     const totalTechnicianBeds = technicianRoomBeds.length;
     const technicianBeds = technicianRoomBeds.filter(b => b.status === 'occupied').length; // Occupied beds in technician-only rooms
     const technicianBedsAvailable = technicianRoomBeds.filter(b => b.status === 'available').length;
-    
+
     // External personnel-specific stats (beds in rooms designated for external_only)
     const externalRooms = campRooms.filter(r => r.occupant_type === 'external_only');
     const externalRoomBeds = campBeds.filter(b => externalRooms.some(r => r.id === b.room_id));
     const totalExternalBeds = externalRoomBeds.length;
     const externalBeds = externalRoomBeds.filter(b => b.status === 'occupied').length; // Occupied beds in external-only rooms
     const externalBedsAvailable = externalRoomBeds.filter(b => b.status === 'available').length;
-    
+
     // Mixed-occupancy stats (beds in rooms designated for mixed)
     const mixedRooms = campRooms.filter(r => r.occupant_type === 'mixed');
     const mixedRoomBeds = campBeds.filter(b => mixedRooms.some(r => r.id === b.room_id));
@@ -414,19 +445,19 @@ export default function Camps() {
       occupiedBeds: occupiedBedsCount,
       availableBeds: availableBedsCount,
       occupancy: totalPhysicalBeds > 0 ? ((occupiedBedsCount / totalPhysicalBeds) * 100).toFixed(1) : 0,
-      
+
       // Technician stats
       technicianBeds, // This refers to occupied beds in technician-only rooms
       totalTechnicianBeds,
       technicianBedsAvailable,
       technicianOccupancy: totalTechnicianBeds > 0 ? ((technicianBeds / totalTechnicianBeds) * 100).toFixed(1) : 0,
-      
+
       // External stats
       externalBeds, // This refers to occupied beds in external-only rooms
       totalExternalBeds,
       externalBedsAvailable,
       externalOccupancy: totalExternalBeds > 0 ? ((externalBeds / totalExternalBeds) * 100).toFixed(1) : 0,
-      
+
       // Mixed stats
       totalMixedBeds,
       mixedBedsAvailable
@@ -436,7 +467,7 @@ export default function Camps() {
   const exportToCSV = () => {
     // Headers for the CSV file
     const headers = ['Camp Code', 'Camp Name', 'Location', 'Defined Capacity', 'Current Occupancy (Physical Beds)', 'Occupancy Rate (vs. Defined Capacity)', 'Available Capacity (vs. Defined Capacity)', 'Status', 'Coordinates'];
-    
+
     // Process and sort camp data for the CSV
     const allCampsData = [...camps]
       .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
@@ -444,9 +475,9 @@ export default function Camps() {
         const stats = getCampStats(camp.id);
         const current_occupancy = stats.occupiedBeds;
         const total_defined_capacity = camp.capacity;
-        
-        const occupancyRate = total_defined_capacity > 0 
-          ? ((current_occupancy / total_defined_capacity) * 100).toFixed(1) 
+
+        const occupancyRate = total_defined_capacity > 0
+          ? ((current_occupancy / total_defined_capacity) * 100).toFixed(1)
           : 0;
         const available_beds_capacity = total_defined_capacity - current_occupancy;
 
@@ -461,13 +492,13 @@ export default function Camps() {
           camp.status || '-',
           camp.latitude && camp.longitude ? `${camp.latitude}, ${camp.longitude}` : '-'
         ];
-    });
+      });
 
     // Create CSV string
-    const csv = [headers, ...allCampsData].map(row => 
+    const csv = [headers, ...allCampsData].map(row =>
       row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
     ).join('\n');
-    
+
     // Create a Blob and trigger download
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
@@ -565,7 +596,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
       console.log('Starting bulk upload...');
       const text = await bulkFile.text();
       console.log('File read successfully, parsing CSV...');
-      
+
       const rawRows = parseCSV(text);
       console.log(`Parsed ${rawRows.length} raw rows from CSV:`, rawRows);
 
@@ -578,7 +609,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
       // First Pass: Group by camp_code -> floor_number -> room_number
       // Each room will store its collected beds and capacity
       const campStructures = {};
-      
+
       rawRows.forEach((row, rowIndex) => {
         const campCode = (row.camp_code || '').trim();
         const floorNumber = (row.floor_number || '').trim();
@@ -603,11 +634,11 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
         }
 
         const campCodeUpper = campCode.toUpperCase();
-        
+
         if (!campStructures[campCodeUpper]) {
           campStructures[campCodeUpper] = {};
         }
-        
+
         if (!campStructures[campCodeUpper][floorNumber]) {
           campStructures[campCodeUpper][floorNumber] = {
             floor_data: {
@@ -618,7 +649,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
             rooms: {}
           };
         }
-        
+
         if (!campStructures[campCodeUpper][floorNumber].rooms[roomNumber]) {
           // Parse occupant_type with proper defaults
           let occupantType = (row.room_occupant_type || '').trim().toLowerCase();
@@ -654,11 +685,11 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
 
         // Add bed from current row if bed_number is present and not empty
         if (row.bed_number && row.bed_number.trim() !== '') {
-            campStructures[campCodeUpper][floorNumber].rooms[roomNumber].explicit_beds.push({
-                bed_number: row.bed_number.trim(),
-                status: (row.bed_status || 'available').trim().toLowerCase(),
-                room_id: null, // Will be filled later
-            });
+          campStructures[campCodeUpper][floorNumber].rooms[roomNumber].explicit_beds.push({
+            bed_number: row.bed_number.trim(),
+            status: (row.bed_status || 'available').trim().toLowerCase(),
+            room_id: null, // Will be filled later
+          });
         }
       });
 
@@ -667,41 +698,41 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
       // Second Pass: Validate capacities and auto-generate beds
       const finalCampStructures = {}; // Will hold structures with auto-generated beds
       for (const campCodeUpper in campStructures) {
-          finalCampStructures[campCodeUpper] = {};
-          for (const floorNumber in campStructures[campCodeUpper]) {
-              finalCampStructures[campCodeUpper][floorNumber] = {
-                  floor_data: campStructures[campCodeUpper][floorNumber].floor_data,
-                  rooms: {}
-              };
-              for (const roomNumber in campStructures[campCodeUpper][floorNumber].rooms) {
-                  const roomConfig = campStructures[campCodeUpper][floorNumber].rooms[roomNumber];
-                  const roomCapacity = roomConfig.room_data.capacity;
-                  const explicitBeds = roomConfig.explicit_beds;
-                  const bedsForCreation = [];
+        finalCampStructures[campCodeUpper] = {};
+        for (const floorNumber in campStructures[campCodeUpper]) {
+          finalCampStructures[campCodeUpper][floorNumber] = {
+            floor_data: campStructures[campCodeUpper][floorNumber].floor_data,
+            rooms: {}
+          };
+          for (const roomNumber in campStructures[campCodeUpper][floorNumber].rooms) {
+            const roomConfig = campStructures[campCodeUpper][floorNumber].rooms[roomNumber];
+            const roomCapacity = roomConfig.room_data.capacity;
+            const explicitBeds = roomConfig.explicit_beds;
+            const bedsForCreation = [];
 
-                  // Capacity Validation
-                  if (explicitBeds.length > roomCapacity) {
-                      processingErrors.push(`Camp '${campCodeUpper}', Floor '${floorNumber}', Room '${roomNumber}': ${explicitBeds.length} explicit beds listed, but 'room_capacity' is ${roomCapacity}. Excess beds will be ignored.`);
-                      // Truncate explicit beds to roomCapacity
-                      bedsForCreation.push(...explicitBeds.slice(0, roomCapacity));
-                  } else {
-                      bedsForCreation.push(...explicitBeds);
-                  }
+            // Capacity Validation
+            if (explicitBeds.length > roomCapacity) {
+              processingErrors.push(`Camp '${campCodeUpper}', Floor '${floorNumber}', Room '${roomNumber}': ${explicitBeds.length} explicit beds listed, but 'room_capacity' is ${roomCapacity}. Excess beds will be ignored.`);
+              // Truncate explicit beds to roomCapacity
+              bedsForCreation.push(...explicitBeds.slice(0, roomCapacity));
+            } else {
+              bedsForCreation.push(...explicitBeds);
+            }
 
-                  // Auto-generate beds if needed
-                  for (let i = bedsForCreation.length; i < roomCapacity; i++) {
-                      bedsForCreation.push({
-                          bed_number: `Bed ${i + 1}`, // Default bed number, assuming 1-based indexing
-                          status: 'available' // Default status
-                      });
-                  }
+            // Auto-generate beds if needed
+            for (let i = bedsForCreation.length; i < roomCapacity; i++) {
+              bedsForCreation.push({
+                bed_number: `Bed ${i + 1}`, // Default bed number, assuming 1-based indexing
+                status: 'available' // Default status
+              });
+            }
 
-                  finalCampStructures[campCodeUpper][floorNumber].rooms[roomNumber] = {
-                      ...roomConfig, // Copy existing room_data, etc.
-                      beds: bedsForCreation // This is the final list of beds for creation
-                  };
-              }
+            finalCampStructures[campCodeUpper][floorNumber].rooms[roomNumber] = {
+              ...roomConfig, // Copy existing room_data, etc.
+              beds: bedsForCreation // This is the final list of beds for creation
+            };
           }
+        }
       }
       console.log('Final structured data with beds (including auto-generated):', finalCampStructures);
 
@@ -711,7 +742,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
         setUploading(false);
         return;
       }
-      
+
       // Find camp IDs by code (CASE-INSENSITIVE)
       const campMap = {};
       camps.forEach(camp => {
@@ -719,7 +750,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
           campMap[camp.code.toUpperCase()] = camp.id;
         }
       });
-      
+
       console.log('Available camps:', campMap);
 
       let totalFloors = 0;
@@ -731,7 +762,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
       for (const [campCodeUpper, floorStructure] of Object.entries(finalCampStructures)) {
         console.log(`Processing camp code: ${campCodeUpper}`);
         const campId = campMap[campCodeUpper];
-        
+
         if (!campId) {
           console.warn(`Camp with code ${campCodeUpper} not found, skipping floors, rooms, and beds for this camp.`);
           skippedCamps.push(campCodeUpper);
@@ -743,7 +774,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
           ...f.floor_data,
           camp_id: campId
         }));
-        
+
         console.log(`Creating ${floorsToCreate.length} floors for camp ${campCodeUpper}:`, floorsToCreate);
         const createdFloors = await bulkCreateFloorsMutation.mutateAsync(floorsToCreate);
         console.log(`Created ${createdFloors.length} floors:`, createdFloors);
@@ -777,8 +808,8 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
           // Create a map of room_number to created room ID
           const roomMapForBeds = {};
           createdRooms.forEach((createdRoom, index) => {
-              // roomsToCreate[index] holds the original room_number for the createdRoom
-              roomMapForBeds[roomsToCreate[index].room_number] = createdRoom.id;
+            // roomsToCreate[index] holds the original room_number for the createdRoom
+            roomMapForBeds[roomsToCreate[index].room_number] = createdRoom.id;
           });
           console.log('Room ID map for beds:', roomMapForBeds);
 
@@ -797,10 +828,10 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
             }));
 
             if (bedsToCreate.length > 0) {
-                console.log(`Creating ${bedsToCreate.length} beds for room ${roomNumber} (ID: ${roomId}):`, bedsToCreate);
-                const createdBeds = await bulkCreateBedsMutation.mutateAsync(bedsToCreate);
-                console.log(`Created ${createdBeds.length} beds:`, createdBeds);
-                totalBeds += createdBeds.length;
+              console.log(`Creating ${bedsToCreate.length} beds for room ${roomNumber} (ID: ${roomId}):`, bedsToCreate);
+              const createdBeds = await bulkCreateBedsMutation.mutateAsync(bedsToCreate);
+              console.log(`Created ${createdBeds.length} beds:`, createdBeds);
+              totalBeds += createdBeds.length;
             }
           }
         }
@@ -811,13 +842,13 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
         message += `\n\nWarning: Skipped camps with codes: ${skippedCamps.join(', ')} (not found in system - matching is case-insensitive).`;
       }
       if (processingErrors.length > 0) {
-          message += `\n\nAlso, some warnings occurred during CSV processing:\n${processingErrors.join('\n')}`;
+        message += `\n\nAlso, some warnings occurred during CSV processing:\n${processingErrors.join('\n')}`;
       }
 
 
       setUploadResult({ success: true, message });
       setBulkFile(null);
-      
+
       // Close dialog after 2 seconds on success
       setTimeout(() => {
         setShowBulkStructureDialog(false);
@@ -828,13 +859,13 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
       console.error("Bulk structure upload error:", error);
       let errorMessage = error.message || "An unexpected error occurred. Check console for details.";
       if (error.response && error.response.data && error.response.data.message) {
-          errorMessage = error.response.data.message; // From API backend validation
+        errorMessage = error.response.data.message; // From API backend validation
       }
       if (processingErrors.length > 0) { // processingErrors is now guaranteed to be defined
-          errorMessage += `\n\nAlso, some warnings occurred during CSV processing:\n${processingErrors.join('\n')}`;
+        errorMessage += `\n\nAlso, some warnings occurred during CSV processing:\n${processingErrors.join('\n')}`;
       }
-      setUploadResult({ 
-        success: false, 
+      setUploadResult({
+        success: false,
         error: errorMessage
       });
     }
@@ -846,15 +877,15 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
     setGeneratingBarcodes(true);
     const campFloors = floors.filter(f => f.camp_id === campId);
     const campRooms = rooms.filter(r => campFloors.some(f => f.id === r.floor_id));
-    
+
     const camp = camps.find(c => c.id === campId);
-    
+
     // Create an array of promises for room updates
     const updatePromises = campRooms.map(async (room) => {
       if (!room.barcode_data) {
         const floor = floors.find(f => f.id === room.floor_id);
         const barcodeData = `${camp?.code || 'CAMP'}-F${floor?.floor_number || 'X'}-R${room.room_number}`;
-        
+
         try {
           await updateRoomMutation.mutateAsync({
             id: room.id,
@@ -869,10 +900,10 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
 
     // Wait for all updates to complete
     await Promise.all(updatePromises);
-    
+
     // Invalidate queries to refetch the updated room data
     queryClient.invalidateQueries({ queryKey: ['rooms'] });
-    
+
     setGeneratingBarcodes(false);
   };
 
@@ -883,7 +914,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
   const getCampRoomsWithBarcodes = (campId) => {
     const campFloors = floors.filter(f => f.camp_id === campId);
     const campRooms = rooms.filter(r => campFloors.some(f => f.id === r.floor_id));
-    
+
     return campRooms.map(room => {
       const floor = floors.find(f => f.id === room.floor_id);
       return {
@@ -906,7 +937,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
     if (days <= 30) return { status: 'expiring_soon', className: 'bg-orange-100 text-orange-700' };
     return { status: 'valid', className: 'bg-green-100 text-green-700' };
   };
-    
+
   return (
     <div className="min-h-screen p-6" style={{ backgroundColor: '#F8F9FD' }}>
       {/* Print-specific CSS styles */}
@@ -985,8 +1016,8 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
             <p className="mt-1" style={{ color: '#6C717C' }}>{camps.length} total camps</p>
           </div>
           <div className="flex gap-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={handleRefreshAll}
               disabled={isRefetchingCamps}
               className="hover:opacity-80"
@@ -1058,11 +1089,10 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                         {/* Camp Type Display */}
                         {camp.camp_type && (
                           <div className="flex items-center gap-2">
-                            <Badge className={`text-xs capitalize ${
-                              camp.camp_type === 'induction_camp' ? 'bg-purple-100 text-purple-700' :
+                            <Badge className={`text-xs capitalize ${camp.camp_type === 'induction_camp' ? 'bg-purple-100 text-purple-700' :
                               camp.camp_type === 'exit_camp' ? 'bg-orange-100 text-orange-700' :
-                              'bg-blue-100 text-blue-700'
-                            }`}>
+                                'bg-blue-100 text-blue-700'
+                              }`}>
                               {camp.camp_type.replace(/_/g, ' ')}
                             </Badge>
                           </div>
@@ -1075,7 +1105,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                               // Use ejari document expiry date, fallback to camp contract_end_date
                               const ejariExpiry = getEjariExpiryDate(camp.id);
                               const expiryDate = ejariExpiry || camp.contract_end_date;
-                              
+
                               if (!expiryDate) {
                                 return (
                                   <div className="flex items-center justify-between text-sm p-2 rounded-lg bg-yellow-50">
@@ -1084,30 +1114,28 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                   </div>
                                 );
                               }
-                              
+
                               const daysLeft = differenceInDays(parseISO(expiryDate), new Date());
                               const isExpired = daysLeft < 0;
                               const isUrgent = daysLeft >= 0 && daysLeft <= 30;
                               const isWarning = daysLeft > 30 && daysLeft <= 90;
-                              
+
                               return (
-                                <div className={`flex items-center justify-between text-sm p-2 rounded-lg ${
-                                  isExpired ? 'bg-red-100' : 
-                                  isUrgent ? 'bg-red-50' : 
-                                  isWarning ? 'bg-orange-50' : 
-                                  'bg-gray-50'
-                                }`}>
+                                <div className={`flex items-center justify-between text-sm p-2 rounded-lg ${isExpired ? 'bg-red-100' :
+                                  isUrgent ? 'bg-red-50' :
+                                    isWarning ? 'bg-orange-50' :
+                                      'bg-gray-50'
+                                  }`}>
                                   <span className="text-gray-600">Ejari Expiry:</span>
                                   <div className="text-right">
                                     <p className="font-medium">{format(parseISO(expiryDate), 'MMM dd, yyyy')}</p>
-                                    <Badge className={`text-xs ${
-                                      isExpired ? 'bg-red-600 text-white' :
+                                    <Badge className={`text-xs ${isExpired ? 'bg-red-600 text-white' :
                                       isUrgent ? 'bg-red-500 text-white' :
-                                      isWarning ? 'bg-orange-500 text-white' :
-                                      'bg-green-100 text-green-700'
-                                    }`}>
-                                      {isExpired 
-                                        ? `${Math.abs(daysLeft)} days overdue` 
+                                        isWarning ? 'bg-orange-500 text-white' :
+                                          'bg-green-100 text-green-700'
+                                      }`}>
+                                      {isExpired
+                                        ? `${Math.abs(daysLeft)} days overdue`
                                         : `${daysLeft} days left`}
                                     </Badge>
                                   </div>
@@ -1116,7 +1144,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                             })()}
                           </div>
                         )}
-                        
+
                         <div className="grid grid-cols-3 gap-3 pt-3" style={{ borderTop: '1px solid #E5E7ED' }}>
                           <div className="text-center">
                             <Layers className="w-4 h-4 mx-auto mb-1" style={{ color: '#6C717C' }} />
@@ -1196,12 +1224,11 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                             <span className="text-sm font-semibold" style={{ color: '#333333' }}>{stats.occupancy}%</span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div 
-                              className={`h-2 rounded-full transition-all ${
-                                parseFloat(stats.occupancy) >= 90 ? 'bg-red-600' :
+                            <div
+                              className={`h-2 rounded-full transition-all ${parseFloat(stats.occupancy) >= 90 ? 'bg-red-600' :
                                 parseFloat(stats.occupancy) >= 70 ? 'bg-yellow-500' :
-                                'bg-blue-600'
-                              }`}
+                                  'bg-blue-600'
+                                }`}
                               style={{ width: `${stats.occupancy}%` }}
                             />
                           </div>
@@ -1232,9 +1259,9 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                   </div>
                 ) : (
                   <div style={{ height: '600px', width: '100%' }}>
-                    <MapContainer 
-                      center={defaultCenter} 
-                      zoom={11} 
+                    <MapContainer
+                      center={defaultCenter}
+                      zoom={11}
                       scrollWheelZoom={false} // Disable scroll zoom to prevent accidental map movement
                       style={{ height: '100%', width: '100%' }}
                     >
@@ -1245,8 +1272,8 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                       {campsWithCoordinates.map((camp) => {
                         const stats = getCampStats(camp.id);
                         return (
-                          <Marker 
-                            key={camp.id} 
+                          <Marker
+                            key={camp.id}
                             position={[camp.latitude, camp.longitude]}
                           >
                             <Popup>
@@ -1254,7 +1281,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                 <h3 className="font-bold text-lg mb-1">{camp.name}</h3>
                                 <p className="text-sm text-gray-600 mb-2">{camp.code}</p>
                                 <p className="text-sm text-gray-700 mb-3">📍 {camp.location}</p>
-                                
+
                                 <div className="grid grid-cols-2 gap-2 mb-3">
                                   <div className="text-center bg-blue-50 p-2 rounded">
                                     <p className="text-xs text-gray-600">Capacity</p>
@@ -1265,7 +1292,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                     <p className="font-semibold text-green-700">{stats.occupancy}%</p>
                                   </div>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-3 gap-1 text-xs">
                                   <div className="text-center">
                                     <p className="text-gray-600">Floors</p>
@@ -1315,7 +1342,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                 const campRooms = rooms.filter(r => campFloors.some(f => f.id === r.floor_id));
                 const roomsWithBarcodes = campRooms.filter(r => r.barcode_data).length;
                 const capacityIssues = getCampCapacityIssues(camp.id);
-                
+
                 return (
                   <Card key={camp.id} className="border-none shadow-md" style={{ backgroundColor: '#FFFFFF', borderRadius: '14px' }}>
                     <CardContent className="p-0">
@@ -1368,7 +1395,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
 
                       {isExpanded && (
                         <div className="p-4">
-                          <Tabs value={campTabs[camp.id] || "structure"} onValueChange={(val) => setCampTabs({...campTabs, [camp.id]: val})}>
+                          <Tabs value={campTabs[camp.id] || "structure"} onValueChange={(val) => setCampTabs({ ...campTabs, [camp.id]: val })}>
                             <TabsList className="bg-gray-100 mb-4">
                               <TabsTrigger value="structure">
                                 <Building2 className="w-4 h-4 mr-2" />
@@ -1396,7 +1423,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                       {capacityIssues.map(issue => (
                                         <div key={issue.roomId} className="flex items-center justify-between p-2 bg-white rounded border">
                                           <span>
-                                            Floor {issue.floorNumber}, Room {issue.roomNumber}: 
+                                            Floor {issue.floorNumber}, Room {issue.roomNumber}:
                                             {issue.isZeroCapacity ? (
                                               <strong className="text-red-700"> ZERO CAPACITY - Set capacity immediately!</strong>
                                             ) : (
@@ -1412,8 +1439,18 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                             onClick={() => handleFixCapacity(issue.roomId, 4)}
                                             className="ml-2"
                                           >
-                                            {issue.isZeroCapacity ? 'Set Capacity' : 'Fix Capacity'}
+                                            {issue.isZeroCapacity ? 'Set Capacity' : 'Fix Capacity (Resize Room)'}
                                           </Button>
+                                          {!issue.isZeroCapacity && issue.difference > 0 && (
+                                            <Button
+                                              size="sm"
+                                              onClick={() => handleCreateMissingBeds(issue.roomId, issue.difference)}
+                                              className="ml-2 bg-green-600 hover:bg-green-700 text-white"
+                                            >
+                                              <Plus className="w-3 h-3 mr-1" />
+                                              Create {issue.difference} Missing Bed(s)
+                                            </Button>
+                                          )}
                                         </div>
                                       ))}
                                     </div>
@@ -1427,7 +1464,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                 campFloors.map((floor) => {
                                   const floorRooms = rooms.filter(r => r.floor_id === floor.id);
                                   const isFloorExpanded = expandedFloors[floor.id];
-                                  
+
                                   return (
                                     <div key={floor.id} className="border rounded-lg overflow-hidden">
                                       <div className="p-3 bg-gray-50 border-b">
@@ -1466,13 +1503,12 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                                 const occupiedBeds = roomBeds.filter(b => b.status === 'occupied').length;
                                                 const capacityMismatch = roomBeds.length !== room.capacity;
                                                 const isZeroCapacity = !room.capacity || room.capacity === 0;
-                                                
+
                                                 return (
-                                                  <Card key={room.id} className={`border ${
-                                                    isZeroCapacity ? 'border-red-500 bg-red-100' : 
-                                                    capacityMismatch ? 'border-red-300 bg-red-50' : 
-                                                    'border-gray-200'
-                                                  }`}>
+                                                  <Card key={room.id} className={`border ${isZeroCapacity ? 'border-red-500 bg-red-100' :
+                                                    capacityMismatch ? 'border-red-300 bg-red-50' :
+                                                      'border-gray-200'
+                                                    }`}>
                                                     <CardContent className="p-3">
                                                       <div className="flex items-start justify-between mb-2">
                                                         <div className="flex items-center gap-2 flex-1">
@@ -1519,13 +1555,13 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                                           disabled={isZeroCapacity || roomBeds.length >= room.capacity}
                                                           title={
                                                             isZeroCapacity ? "Set capacity first to add beds" :
-                                                            roomBeds.length >= room.capacity ? "Room is at full capacity" : "Add bed"
+                                                              roomBeds.length >= room.capacity ? "Room is at full capacity" : "Add bed"
                                                           }
                                                         >
                                                           <Plus className="w-3 h-3" />
                                                         </Button>
                                                       </div>
-                                                      
+
                                                       <div className="flex flex-wrap gap-1 mb-2">
                                                         <Badge variant="outline" className="text-xs">{room.gender_restriction}</Badge>
                                                         {room.occupant_type && (
@@ -1540,23 +1576,39 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
 
                                                       {roomBeds.length > 0 && (
                                                         <div className="grid grid-cols-4 gap-1">
-                                                          {roomBeds.map((bed) => (
-                                                           <div
-                                                             key={bed.id}
-                                                             className={`p-1 rounded text-center text-xs ${
-                                                               bed.status === 'occupied' ? 'bg-red-100 text-red-700' :
-                                                               bed.status === 'reserved' ? 'bg-yellow-100 text-yellow-700' :
-                                                               bed.status === 'maintenance' ? 'bg-gray-100 text-gray-700' :
-                                                               'bg-green-100 text-green-700'
-                                                             }`}
-                                                             title={`${bed.bed_number} - ${bed.status}${bed.is_lower_berth ? ' (Lower Berth)' : ' (Upper Berth)'}`}
-                                                           >
-                                                             {bed.bed_number} {bed.is_lower_berth ? 'L' : 'U'}
-                                                           </div>
-                                                          ))}
+                                                          {roomBeds.map((bed) => {
+                                                            let occupantName = '';
+                                                            if (bed.status === 'occupied') {
+                                                              if (bed.technician_id) {
+                                                                const tech = technicians.find(t => t.id === bed.technician_id);
+                                                                occupantName = tech ? `${tech.full_name} (${tech.employee_id})` : 'Unknown Technician';
+                                                              } else if (bed.external_personnel_id) {
+                                                                const ext = externalPersonnel.find(e => e.id === bed.external_personnel_id);
+                                                                occupantName = ext ? `${ext.full_name} (${ext.company_name})` : 'Unknown External Person';
+                                                              }
+                                                            }
+
+                                                            const tooltipText = bed.status === 'occupied'
+                                                              ? `Occupied by: ${occupantName}${bed.is_lower_berth ? ' (Lower Berth)' : ' (Upper Berth)'}`
+                                                              : `${bed.bed_number} - ${bed.status}${bed.is_lower_berth ? ' (Lower Berth)' : ' (Upper Berth)'}`;
+
+                                                            return (
+                                                              <div
+                                                                key={bed.id}
+                                                                className={`p-1 rounded text-center text-xs cursor-help transition-colors ${bed.status === 'occupied' ? 'bg-red-100 text-red-700 font-medium border border-red-200' :
+                                                                  bed.status === 'reserved' ? 'bg-yellow-100 text-yellow-700' :
+                                                                    bed.status === 'maintenance' ? 'bg-gray-100 text-gray-700' :
+                                                                      'bg-green-100 text-green-700 hover:bg-green-200'
+                                                                  }`}
+                                                                title={tooltipText}
+                                                              >
+                                                                {bed.bed_number} {bed.is_lower_berth ? 'L' : 'U'}
+                                                              </div>
+                                                            );
+                                                          })}
                                                         </div>
                                                       )}
-                                                      
+
                                                       {!isZeroCapacity && (
                                                         <div className="mt-2 text-xs text-gray-600">
                                                           {occupiedBeds}/{roomBeds.length} occupied
@@ -1580,7 +1632,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                             <TabsContent value="documents">
                               {(() => {
                                 const campDocs = campDocuments.filter(d => d.camp_id === camp.id);
-                                
+
                                 return campDocs.length === 0 ? (
                                   <div className="text-center py-12">
                                     <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -1590,7 +1642,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                   <div className="space-y-3">
                                     {campDocs.map((doc) => {
                                       const statusInfo = getDocumentStatus(doc.expiry_date);
-                                      
+
                                       return (
                                         <Card key={doc.id} className="border">
                                           <CardContent className="p-4">
@@ -1601,8 +1653,8 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                                   <h4 className="font-semibold text-gray-900">{doc.document_name}</h4>
                                                   <Badge className={`text-xs ${statusInfo.className}`}>
                                                     {statusInfo.status === 'expired' ? 'Expired' :
-                                                     statusInfo.status === 'expiring_soon' ? 'Expiring Soon' :
-                                                     'Valid'}
+                                                      statusInfo.status === 'expiring_soon' ? 'Expiring Soon' :
+                                                        'Valid'}
                                                   </Badge>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2 text-sm">
@@ -1657,7 +1709,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                             <TabsContent value="assets">
                               {(() => {
                                 const campAssets = assets.filter(a => a.camp_id === camp.id);
-                                
+
                                 return campAssets.length === 0 ? (
                                   <div className="text-center py-12">
                                     <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -1674,12 +1726,11 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                                                 <div className="flex items-center gap-2 mb-2">
                                                   <Wrench className="w-4 h-4 text-orange-600" />
                                                   <h4 className="font-semibold text-gray-900">{asset.asset_name}</h4>
-                                                  <Badge className={`text-xs ${
-                                                    asset.status === 'operational' ? 'bg-green-100 text-green-700' :
+                                                  <Badge className={`text-xs ${asset.status === 'operational' ? 'bg-green-100 text-green-700' :
                                                     asset.status === 'maintenance' ? 'bg-orange-100 text-orange-700' :
-                                                    asset.status === 'out_of_service' ? 'bg-red-100 text-red-700' :
-                                                    'bg-gray-100 text-gray-600'
-                                                  }`}>
+                                                      asset.status === 'out_of_service' ? 'bg-red-100 text-red-700' :
+                                                        'bg-gray-100 text-gray-600'
+                                                    }`}>
                                                     {asset.status?.replace(/_/g, ' ')}
                                                   </Badge>
                                                 </div>
@@ -1756,11 +1807,11 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                 const stats = getCampStats(camp.id);
                 const current_occupancy = stats.occupiedBeds;
                 const total_defined_capacity = camp.capacity;
-                const occupancyRate = total_defined_capacity > 0 
-                  ? ((current_occupancy / total_defined_capacity) * 100).toFixed(1) 
+                const occupancyRate = total_defined_capacity > 0
+                  ? ((current_occupancy / total_defined_capacity) * 100).toFixed(1)
                   : 0;
                 const available_beds_capacity = total_defined_capacity - current_occupancy;
-                
+
                 return (
                   <tr key={camp.id}>
                     <td>{camp.code || '-'}</td>
@@ -1774,7 +1825,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                     <td>{camp.latitude && camp.longitude ? `${camp.latitude}, ${camp.longitude}` : '-'}</td>
                   </tr>
                 );
-            })}
+              })}
           </tbody>
         </table>
       </div>
@@ -1791,7 +1842,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Input
                 required
                 value={campData.name || ''}
-                onChange={(e) => setCampData({...campData, name: e.target.value})}
+                onChange={(e) => setCampData({ ...campData, name: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -1799,20 +1850,21 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Input
                 required
                 value={campData.code || ''}
-                onChange={(e) => setCampData({...campData, code: e.target.value})}
+                onChange={(e) => setCampData({ ...campData, code: e.target.value })}
               />
             </div>
             <div className="space-y-2">
               <Label>Camp Type*</Label>
               <Select
                 value={campData.camp_type || 'regular_camp'}
-                onValueChange={(value) => setCampData({...campData, camp_type: value})}
+                onValueChange={(value) => setCampData({ ...campData, camp_type: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="induction_camp">Induction Camp</SelectItem>
+                  <SelectItem value="project_camp">Project Camp</SelectItem>
                   <SelectItem value="regular_camp">Regular Camp</SelectItem>
                   <SelectItem value="exit_camp">Exit Camp</SelectItem>
                 </SelectContent>
@@ -1823,7 +1875,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Input
                 required
                 value={campData.location || ''}
-                onChange={(e) => setCampData({...campData, location: e.target.value})}
+                onChange={(e) => setCampData({ ...campData, location: e.target.value })}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -1833,7 +1885,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                   type="number"
                   step="any"
                   value={campData.latitude || ''}
-                  onChange={(e) => setCampData({...campData, latitude: parseFloat(e.target.value)})}
+                  onChange={(e) => setCampData({ ...campData, latitude: parseFloat(e.target.value) })}
                   placeholder="25.2048"
                 />
               </div>
@@ -1843,7 +1895,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                   type="number"
                   step="any"
                   value={campData.longitude || ''}
-                  onChange={(e) => setCampData({...campData, longitude: parseFloat(e.target.value)})}
+                  onChange={(e) => setCampData({ ...campData, longitude: parseFloat(e.target.value) })}
                   placeholder="55.2708"
                 />
               </div>
@@ -1854,14 +1906,14 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                 type="number"
                 required
                 value={campData.capacity || ''}
-                onChange={(e) => setCampData({...campData, capacity: parseInt(e.target.value)})}
+                onChange={(e) => setCampData({ ...campData, capacity: parseInt(e.target.value) })}
               />
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
               <Select
                 value={campData.status || 'active'}
-                onValueChange={(value) => setCampData({...campData, status: value})}
+                onValueChange={(value) => setCampData({ ...campData, status: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -1897,7 +1949,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Input
                 required
                 value={campData.name || ''}
-                onChange={(e) => setCampData({...campData, name: e.target.value})}
+                onChange={(e) => setCampData({ ...campData, name: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -1905,20 +1957,21 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Input
                 required
                 value={campData.code || ''}
-                onChange={(e) => setCampData({...campData, code: e.target.value})}
+                onChange={(e) => setCampData({ ...campData, code: e.target.value })}
               />
             </div>
             <div className="space-y-2">
               <Label>Camp Type*</Label>
               <Select
                 value={campData.camp_type || 'regular_camp'}
-                onValueChange={(value) => setCampData({...campData, camp_type: value})}
+                onValueChange={(value) => setCampData({ ...campData, camp_type: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="induction_camp">Induction Camp</SelectItem>
+                  <SelectItem value="project_camp">Project Camp</SelectItem>
                   <SelectItem value="regular_camp">Regular Camp</SelectItem>
                   <SelectItem value="exit_camp">Exit Camp</SelectItem>
                 </SelectContent>
@@ -1929,7 +1982,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Input
                 required
                 value={campData.location || ''}
-                onChange={(e) => setCampData({...campData, location: e.target.value})}
+                onChange={(e) => setCampData({ ...campData, location: e.target.value })}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -1939,7 +1992,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                   type="number"
                   step="any"
                   value={campData.latitude || ''}
-                  onChange={(e) => setCampData({...campData, latitude: parseFloat(e.target.value)})}
+                  onChange={(e) => setCampData({ ...campData, latitude: parseFloat(e.target.value) })}
                   placeholder="25.2048"
                 />
               </div>
@@ -1949,7 +2002,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                   type="number"
                   step="any"
                   value={campData.longitude || ''}
-                  onChange={(e) => setCampData({...campData, longitude: parseFloat(e.target.value)})}
+                  onChange={(e) => setCampData({ ...campData, longitude: parseFloat(e.target.value) })}
                   placeholder="55.2708"
                 />
               </div>
@@ -1960,14 +2013,14 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                 type="number"
                 required
                 value={campData.capacity || ''}
-                onChange={(e) => setCampData({...campData, capacity: parseInt(e.target.value)})}
+                onChange={(e) => setCampData({ ...campData, capacity: parseInt(e.target.value) })}
               />
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
               <Select
                 value={campData.status || 'active'}
-                onValueChange={(value) => setCampData({...campData, status: value})}
+                onValueChange={(value) => setCampData({ ...campData, status: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -2008,7 +2061,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                 type="text"
                 required
                 value={floorData.floor_number || ''}
-                onChange={(e) => setFloorData({...floorData, floor_number: e.target.value})}
+                onChange={(e) => setFloorData({ ...floorData, floor_number: e.target.value })}
                 placeholder="e.g. G, 1, 2, M, B1"
               />
             </div>
@@ -2016,7 +2069,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Label>Floor Name</Label>
               <Input
                 value={floorData.name || ''}
-                onChange={(e) => setFloorData({...floorData, name: e.target.value})}
+                onChange={(e) => setFloorData({ ...floorData, name: e.target.value })}
                 placeholder="e.g. Ground Floor, First Floor"
               />
             </div>
@@ -2044,7 +2097,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Input
                 required
                 value={roomData.room_number || ''}
-                onChange={(e) => setRoomData({...roomData, room_number: e.target.value})}
+                onChange={(e) => setRoomData({ ...roomData, room_number: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -2053,14 +2106,14 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                 type="number"
                 required
                 value={roomData.capacity || ''}
-                onChange={(e) => setRoomData({...roomData, capacity: parseInt(e.target.value)})}
+                onChange={(e) => setRoomData({ ...roomData, capacity: parseInt(e.target.value) })}
               />
             </div>
             <div className="space-y-2">
               <Label>Occupant Type*</Label>
               <Select
                 value={roomData.occupant_type || 'technician_only'}
-                onValueChange={(value) => setRoomData({...roomData, occupant_type: value})}
+                onValueChange={(value) => setRoomData({ ...roomData, occupant_type: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -2075,7 +2128,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Alert className="mt-2 border-blue-200 bg-blue-50">
                 <AlertCircle className="h-4 w-4 text-blue-600" />
                 <AlertDescription className="text-xs text-blue-900">
-                  <strong>Important:</strong> Different occupant types should NOT be mixed in the same room. 
+                  <strong>Important:</strong> Different occupant types should NOT be mixed in the same room.
                   Keep technicians, external personnel, and staff in separate rooms for proper management.
                 </AlertDescription>
               </Alert>
@@ -2084,7 +2137,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Label>Gender Restriction</Label>
               <Select
                 value={roomData.gender_restriction || 'mixed'}
-                onValueChange={(value) => setRoomData({...roomData, gender_restriction: value})}
+                onValueChange={(value) => setRoomData({ ...roomData, gender_restriction: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -2100,7 +2153,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Label>Nationality Group (Optional)</Label>
               <Input
                 value={roomData.nationality_group || ''}
-                onChange={(e) => setRoomData({...roomData, nationality_group: e.target.value})}
+                onChange={(e) => setRoomData({ ...roomData, nationality_group: e.target.value })}
                 placeholder="e.g. Asian, Middle Eastern"
               />
             </div>
@@ -2128,7 +2181,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Input
                 required
                 value={bedData.bed_number || ''}
-                onChange={(e) => setBedData({...bedData, bed_number: e.target.value})}
+                onChange={(e) => setBedData({ ...bedData, bed_number: e.target.value })}
                 placeholder="e.g. B1, B2, A, B"
               />
             </div>
@@ -2136,7 +2189,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Checkbox
                 id="is_lower_berth"
                 checked={bedData.is_lower_berth || false}
-                onCheckedChange={(checked) => setBedData({...bedData, is_lower_berth: !!checked})}
+                onCheckedChange={(checked) => setBedData({ ...bedData, is_lower_berth: !!checked })}
               />
               <label htmlFor="is_lower_berth" className="text-sm font-medium cursor-pointer">
                 Lower Berth (Required for technicians aged 45+)
@@ -2146,7 +2199,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               <Label>Status</Label>
               <Select
                 value={bedData.status || 'available'}
-                onValueChange={(value) => setBedData({...bedData, status: value})}
+                onValueChange={(value) => setBedData({ ...bedData, status: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -2275,7 +2328,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
               Room Barcodes - {selectedCampForBarcodes?.name}
             </DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="flex justify-between items-center gap-3 no-print">
               <p className="text-sm text-gray-600">
@@ -2310,7 +2363,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                 <h1 className="2xl font-bold">{selectedCampForBarcodes?.name} - Room Barcodes</h1>
                 <p className="text-sm text-gray-600">Generated on {format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-3">
                 {selectedCampForBarcodes && getCampRoomsWithBarcodes(selectedCampForBarcodes.id).map((room) => (
                   <div key={room.id} className="barcode-item border-2 border-gray-300 rounded-lg p-4 bg-white">
@@ -2322,7 +2375,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                       <div className="text-xl font-bold text-blue-600">
                         Room {room.room_number}
                       </div>
-                      
+
                       {room.barcode_data ? (
                         <div className="flex flex-col items-center gap-2 py-2">
                           <img
@@ -2339,7 +2392,7 @@ SAJJA,1,First Floor,204,1,male,,BedY,available # Example: Room 204 capacity 1, b
                           No barcode generated yet
                         </div>
                       )}
-                      
+
                       <div className="text-xs text-gray-600 pt-2 border-t">
                         Capacity: {room.capacity} beds
                       </div>

@@ -77,8 +77,8 @@ export default function ManualAllocation() {
   // Get available beds for selected camp
   const campFloors = selectedCamp ? floors.filter(f => f.camp_id === selectedCamp) : [];
   const campRooms = rooms.filter(r => campFloors.some(f => f.id === r.floor_id));
-  const availableBeds = beds.filter(b => 
-    b.status === 'available' && 
+  const availableBeds = beds.filter(b =>
+    b.status === 'available' &&
     campRooms.some(r => r.id === b.room_id)
   );
 
@@ -106,7 +106,7 @@ export default function ManualAllocation() {
     }
 
     const { room } = getBedDetails(selectedBed);
-    
+
     // Validate room occupant type
     if (room.occupant_type === 'technician_only' && personnelType !== 'technician') {
       alert('This room is designated for technicians only');
@@ -119,7 +119,7 @@ export default function ManualAllocation() {
 
     // Validate gender restriction
     if (room.gender_restriction !== 'mixed' && selectedPerson.gender !== room.gender_restriction) {
-      alert(`This room is designated for ${room.gender_restriction} only`);
+      alert(`This room is designated for ${room.gender_restriction || 'mixed'} only`);
       return;
     }
 
@@ -169,7 +169,7 @@ export default function ManualAllocation() {
         <Alert className="border-blue-200 bg-blue-50">
           <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-blue-900 text-sm">
-            <strong>📍 Camp Operations: Manual Bed Allocation</strong><br/>
+            <strong>📍 Camp Operations: Manual Bed Allocation</strong><br />
             For special cases requiring manual intervention → Conflict resolution, medical needs, VIP requests → Select person + bed → Confirm assignment → Overrides smart allocation
           </AlertDescription>
         </Alert>
@@ -242,11 +242,10 @@ export default function ManualAllocation() {
                       <div
                         key={person.id}
                         onClick={() => setSelectedPerson(person)}
-                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                          selectedPerson?.id === person.id
+                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${selectedPerson?.id === person.id
                             ? 'border-purple-600 bg-purple-50'
                             : 'border-gray-200 hover:border-purple-300'
-                        }`}
+                          }`}
                       >
                         <p className="font-semibold text-gray-900">{person.full_name}</p>
                         <p className="text-sm text-gray-600">
@@ -336,11 +335,10 @@ export default function ManualAllocation() {
                         <div
                           key={bed.id}
                           onClick={() => setSelectedBed(bed)}
-                          className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                            selectedBed?.id === bed.id
+                          className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${selectedBed?.id === bed.id
                               ? 'border-green-600 bg-green-50'
                               : 'border-gray-200 hover:border-green-300'
-                          }`}
+                            }`}
                         >
                           <p className="font-semibold text-gray-900">
                             Floor {floor?.floor_number}, Room {room?.room_number}

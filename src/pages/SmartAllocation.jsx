@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,8 @@ export default function SmartAllocation() {
   const [searchNationality, setSearchNationality] = useState("");
   const [searchGender, setSearchGender] = useState("");
   const [searchType, setSearchType] = useState("");
+
+  const previewRef = useRef(null);
 
   const queryClient = useQueryClient();
 
@@ -544,8 +546,8 @@ export default function SmartAllocation() {
       const allocations = [];
       const usedBeds = new Set();
 
-      // Check if camp is Induction or Exit camp (use sequential logic)
-      const isSequentialCamp = campForBeds && (campForBeds.camp_type === 'induction_camp' || campForBeds.camp_type === 'exit_camp');
+      // Check if camp is Induction or Exit or Project camp (use sequential logic)
+      const isSequentialCamp = campForBeds && (campForBeds.camp_type === 'induction_camp' || campForBeds.camp_type === 'exit_camp' || campForBeds.camp_type === 'project_camp');
       console.log(`Camp type sequential: ${isSequentialCamp}`);
 
       // Sort personnel based on camp type
@@ -604,10 +606,10 @@ export default function SmartAllocation() {
         }
       });
 
-      // Sort beds for sequential allocation (Induction/Exit camps)
+      // Sort beds for sequential allocation (Induction/Exit/Project camps)
       const sortedBedsForSequential = isSequentialCamp
         ? [...availableBeds].sort((a, b) => {
-          // Sort by floor number, then room number
+          // Sort by floor number, then room number, then bed number
           const aFloor = a.floor?.floor_number || '';
           const bFloor = b.floor?.floor_number || '';
           const floorCompare = String(aFloor).localeCompare(String(bFloor), undefined, { numeric: true });
@@ -615,7 +617,12 @@ export default function SmartAllocation() {
 
           const aRoom = a.room?.room_number || '';
           const bRoom = b.room?.room_number || '';
-          return String(aRoom).localeCompare(String(bRoom), undefined, { numeric: true });
+          const roomCompare = String(aRoom).localeCompare(String(bRoom), undefined, { numeric: true });
+          if (roomCompare !== 0) return roomCompare;
+
+          const aBed = a.bed_number || '';
+          const bBed = b.bed_number || '';
+          return String(aBed).localeCompare(String(bBed), undefined, { numeric: true });
         })
         : availableBeds;
 
@@ -907,6 +914,13 @@ export default function SmartAllocation() {
       setAllocationResult(allocations);
       setShowPreview(true);
       setAllocating(false);
+
+      // Auto-scroll to results
+      setTimeout(() => {
+        if (previewRef.current) {
+          previewRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
     } catch (error) {
       console.error("Crash in smartAllocate:", error);
       alert(`Programmatic Error in Smart Allocation: ${error.message}\n\nSee console for details.`);
@@ -1470,7 +1484,7 @@ export default function SmartAllocation() {
         )}
 
         {/* Allocation Preferences - Only for regular camps */}
-        {campForBeds && personnelToAllocate.length > 0 && campForBeds.camp_type !== 'induction_camp' && campForBeds.camp_type !== 'exit_camp' && (
+        {campForBeds && personnelToAllocate.length > 0 && campForBeds.camp_type !== 'induction_camp' && campForBeds.camp_type !== 'exit_camp' && campForBeds.camp_type !== 'project_camp' && (
           <Card className="border-none shadow-lg">
             <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50 border-b">
               <CardTitle>Allocation Preferences</CardTitle>
@@ -1596,7 +1610,7 @@ export default function SmartAllocation() {
         )}
 
         {/* Sequential Allocation Button - For induction/exit camps */}
-        {campForBeds && personnelToAllocate.length > 0 && (campForBeds.camp_type === 'induction_camp' || campForBeds.camp_type === 'exit_camp') && (
+        {campForBeds && personnelToAllocate.length > 0 && (campForBeds.camp_type === 'induction_camp' || campForBeds.camp_type === 'exit_camp' || campForBeds.camp_type === 'project_camp') && (
           <Card className="border-none shadow-lg">
             <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50 border-b">
               <CardTitle>Sequential Allocation (First Come, First Served)</CardTitle>
@@ -1605,7 +1619,7 @@ export default function SmartAllocation() {
               <Alert className="mb-4 border-blue-200 bg-blue-50">
                 <AlertCircle className="h-4 w-4 text-blue-600" />
                 <AlertDescription className="text-blue-900">
-                  <strong>Sequential Allocation for {campForBeds.camp_type === 'induction_camp' ? 'Induction' : 'Exit'} Camp:</strong>
+                  <strong>Sequential Allocation for {campForBeds.camp_type === 'induction_camp' ? 'Induction' : campForBeds.camp_type === 'exit_camp' ? 'Exit' : 'Project'} Camp:</strong>
                   <ul className="list-disc ml-5 mt-2 space-y-1 text-xs">
                     <li>Beds assigned in order based on arrival time</li>
                     <li>Starts from first floor and room sequentially</li>
@@ -1632,96 +1646,98 @@ export default function SmartAllocation() {
 
         {/* Allocation Preview */}
         {showPreview && allocationResult && allocationResult.length > 0 && (
-          <Card className="border-none shadow-lg">
-            <CardHeader className="border-b bg-gradient-to-r from-purple-50 to-blue-50">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>
-                    {mode === 'transfer' ? 'Allocation Preview (Proposed Beds)' : 'Allocation Preview (Final)'}
-                  </CardTitle>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {allocationResult.length} personnel will be assigned beds
-                    {mode === 'transfer' && ' • Status will become: beds_allocated'}
-                  </p>
+          <div ref={previewRef}>
+            <Card className="border-none shadow-lg">
+              <CardHeader className="border-b bg-gradient-to-r from-purple-50 to-blue-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>
+                      {mode === 'transfer' ? 'Allocation Preview (Proposed Beds)' : 'Allocation Preview (Final)'}
+                    </CardTitle>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {allocationResult.length} personnel will be assigned beds
+                      {mode === 'transfer' && ' • Status will become: beds_allocated'}
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <Button variant="outline" onClick={() => setShowPreview(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={confirmAllocation}
+                      disabled={allocating}
+                      className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      {allocating ? 'Saving...' : (mode === 'transfer' ? 'Confirm Bed Proposal' : 'Confirm Allocation')}
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => setShowPreview(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={confirmAllocation}
-                    disabled={allocating}
-                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                  >
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                    {allocating ? 'Saving...' : (mode === 'transfer' ? 'Confirm Bed Proposal' : 'Confirm Allocation')}
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-6">
-              {mode === 'transfer' && (
-                <Alert className="mb-4 border-blue-500 bg-blue-50">
-                  <AlertCircle className="h-4 w-4 text-blue-600" />
-                  <AlertDescription className="text-blue-900">
-                    <strong>Important:</strong> This will PROPOSE bed allocations only. Beds will NOT be actually allocated yet.<br />
-                    Actual allocation happens when personnel arrive at the target camp and fingerprint attendance is captured.
-                  </AlertDescription>
-                </Alert>
-              )}
+              </CardHeader>
+              <CardContent className="p-6">
+                {mode === 'transfer' && (
+                  <Alert className="mb-4 border-blue-500 bg-blue-50">
+                    <AlertCircle className="h-4 w-4 text-blue-600" />
+                    <AlertDescription className="text-blue-900">
+                      <strong>Important:</strong> This will PROPOSE bed allocations only. Beds will NOT be actually allocated yet.<br />
+                      Actual allocation happens when personnel arrive at the target camp and fingerprint attendance is captured.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b-2 border-gray-300 bg-gray-50">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Personnel</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Nationality</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Gender</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Floor</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Room</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Bed</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allocationResult.map((allocation, index) => (
-                      <tr
-                        key={`${allocation.type}-${allocation.personnel.id}`}
-                        className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                      >
-                        <td className="px-4 py-3 text-sm border-b">
-                          <div>
-                            <p className="font-medium">{allocation.personnel.full_name}</p>
-                            <p className="text-xs text-gray-500">
-                              {allocation.type === 'technician' ? allocation.personnel.employee_id : allocation.personnel.company_name}
-                            </p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm border-b">
-                          <Badge variant="outline" className="capitalize">{allocation.type}</Badge>
-                        </td>
-                        <td className="px-4 py-3 text-sm border-b">{allocation.personnel.nationality || '-'}</td>
-                        <td className="px-4 py-3 text-sm border-b">
-                          <Badge variant={allocation.personnel.gender === 'male' ? 'default' : 'secondary'}>
-                            {allocation.personnel.gender === 'male' ? '♂ Male' : '♀ Female'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-sm border-b">Floor {allocation.floor?.floor_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm border-b">Room {allocation.room?.room_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm border-b">Bed {allocation.bed?.bed_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm border-b">
-                          <Badge className={mode === 'transfer' ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}>
-                            {mode === 'transfer' ? 'Proposed' : 'Allocated'}
-                          </Badge>
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b-2 border-gray-300 bg-gray-50">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Personnel</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Nationality</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Gender</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Floor</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Room</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Bed</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+                    </thead>
+                    <tbody>
+                      {allocationResult.map((allocation, index) => (
+                        <tr
+                          key={`${allocation.type}-${allocation.personnel.id}`}
+                          className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                        >
+                          <td className="px-4 py-3 text-sm border-b">
+                            <div>
+                              <p className="font-medium">{allocation.personnel.full_name}</p>
+                              <p className="text-xs text-gray-500">
+                                {allocation.type === 'technician' ? allocation.personnel.employee_id : allocation.personnel.company_name}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm border-b">
+                            <Badge variant="outline" className="capitalize">{allocation.type}</Badge>
+                          </td>
+                          <td className="px-4 py-3 text-sm border-b">{allocation.personnel.nationality || '-'}</td>
+                          <td className="px-4 py-3 text-sm border-b">
+                            <Badge variant={allocation.personnel.gender === 'male' ? 'default' : 'secondary'}>
+                              {allocation.personnel.gender === 'male' ? '♂ Male' : '♀ Female'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-sm border-b">Floor {allocation.floor?.floor_number || '-'}</td>
+                          <td className="px-4 py-3 text-sm border-b">Room {allocation.room?.room_number || '-'}</td>
+                          <td className="px-4 py-3 text-sm border-b">Bed {allocation.bed?.bed_number || '-'}</td>
+                          <td className="px-4 py-3 text-sm border-b">
+                            <Badge className={mode === 'transfer' ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}>
+                              {mode === 'transfer' ? 'Proposed' : 'Allocated'}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
       </div>
     </div>
