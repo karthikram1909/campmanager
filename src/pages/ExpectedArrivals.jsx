@@ -423,7 +423,8 @@ export default function ExpectedArrivals() {
 
         const form = document.createElement('form');
         form.method = 'GET';
-        form.action = 'https://savetron.2440066.xyz/savetron_123';
+        // form.action = 'https://savetron.2440066.xyz/savetron_123';
+        form.action = '';
         form.target = 'whatsapp_iframe'; // Target the hidden iframe
         form.style.display = 'none';
 
@@ -1769,7 +1770,7 @@ export default function ExpectedArrivals() {
                 }
 
                 const messageText = `TEST MESSAGE: Welcome ${selectedTechnician.full_name}, your arrival has been confirmed.`;
-                const testUrl = `https://savetron.2440066.xyz/savetron_123?phone=${userPhone}&instance_id=692B487D285FA&access_token=66d137a48208a&message=${encodeURIComponent(messageText)}`;
+                const testUrl = ``;
                 console.log("Testing WhatsApp URL:", testUrl);
                 window.open(testUrl, '_blank');
               }}

@@ -396,55 +396,177 @@ EMP002,Jane Smith,Filipino,Asian,female,1992-03-20,+971507654321,jane@example.co
     setUploadResult(null);
 
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: bulkFile });
-
-      const schema = await base44.entities.Technician.schema();
-      const extractResult = await base44.integrations.Core.ExtractDataFromUploadedFile({
-        file_url,
-        json_schema: {
-          type: "array",
-          items: schema
-        }
+      // Parse file locally
+      const text = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(e);
+        reader.readAsText(bulkFile);
       });
 
-      if (extractResult.status === "success" && extractResult.output) {
-        const convertDate = (dateStr) => {
-          if (!dateStr) return null;
+      // Simple CSV parser
+      const rows = text.split('\n')
+        .map(row => row.trim())
+        .filter(row => row && !row.startsWith('#')); // Remove comments and empty lines
 
-          if (typeof dateStr !== 'string') return null;
-
-          if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            return dateStr;
-          }
-
-          if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-            const [day, month, year] = dateStr.split('/');
-            return `${year}-${month}-${day}`;
-          }
-
-          return dateStr;
-        };
-
-        const normalizedData = extractResult.output.map(tech => ({
-          ...tech,
-          date_of_birth: convertDate(tech.date_of_birth),
-          induction_date: convertDate(tech.induction_date),
-          exit_date: convertDate(tech.exit_date),
-          expected_country_exit_date: convertDate(tech.expected_country_exit_date),
-          actual_country_exit_date: convertDate(tech.actual_country_exit_date),
-          expected_arrival_date: convertDate(tech.expected_arrival_date),
-          actual_arrival_date: convertDate(tech.actual_arrival_date),
-          last_transfer_date: convertDate(tech.last_transfer_date),
-          passport_expiry_date: convertDate(tech.passport_expiry_date),
-          health_insurance_expiry_date: convertDate(tech.health_insurance_expiry_date)
-        }));
-
-        await bulkCreateMutation.mutateAsync(normalizedData);
-        setBulkFile(null);
-      } else {
-        setUploadResult({ success: false, error: extractResult.details || "Failed to extract data" });
+      if (rows.length < 2) {
+        throw new Error("Invalid CSV format. Header or data missing.");
       }
+
+      const headers = rows[0].split(',').map(h => h.trim());
+
+      // Normalize headers to match database columns
+      const headerMapping = {
+        'employee id': 'employee_id',
+        'employee_id': 'employee_id',
+        'id': 'employee_id',
+        'full name': 'full_name',
+        'full_name': 'full_name',
+        'name': 'full_name',
+        'employee name': 'full_name',
+        'employee_name': 'full_name',
+        'nationality': 'nationality',
+        'ethnicity': 'ethnicity',
+        'gender': 'gender',
+        'date of birth': 'date_of_birth',
+        'date_of_birth': 'date_of_birth',
+        'dob': 'date_of_birth',
+        'ate_of_bir': 'date_of_birth', // From screenshot cutoff
+        'phone': 'phone',
+        'mobile': 'phone',
+        'contact': 'phone',
+        'email': 'email',
+        'state': 'state',
+        'marital status': 'marital_status',
+        'marital_status': 'marital_status',
+        'arital_stat': 'marital_status', // From screenshot cutoff
+        'passport no': 'passport_no',
+        'passport_no': 'passport_no',
+        'passport number': 'passport_no',
+        'passport_number': 'passport_no',
+        'passport_num': 'passport_no',
+        'sport_num': 'passport_no', // From screenshot cutoff
+        'passport expiry date': 'passport_expiry_date',
+        'passport_expiry_date': 'passport_expiry_date',
+        'passport_expiry': 'passport_expiry_date',
+        'ssport_exp': 'passport_expiry_date', // From screenshot cutoff
+        'health insurance no': 'health_insurance_no',
+        'health_insurance_no': 'health_insurance_no',
+        'insurance no': 'health_insurance_no',
+        'insurance_no': 'health_insurance_no',
+        'health insurance expiry date': 'health_insurance_expiry_date',
+        'health_insurance_expiry_date': 'health_insurance_expiry_date',
+        'insurance expiry': 'health_insurance_expiry_date',
+        'trade': 'trade',
+        'position': 'trade',
+        'designation': 'trade',
+        'department': 'department',
+        'status': 'status',
+        'induction date': 'induction_date',
+        'induction_date': 'induction_date',
+        'joining date': 'induction_date',
+        'duction_da': 'induction_date', // From screenshot cutoff
+        'exit date': 'exit_date',
+        'exit_date': 'exit_date',
+        'expected country exit date': 'expected_country_exit_date',
+        'expected_country_exit_date': 'expected_country_exit_date',
+        'actual country exit date': 'actual_country_exit_date',
+        'actual_country_exit_date': 'actual_country_exit_date',
+        'ed_actual_': 'actual_country_exit_date', // From screenshot cutoff?
+        'bed id': 'bed_id',
+        'bed_id': 'bed_id',
+        'bed': 'bed_id'
+      };
+
+      const normalizedHeaders = headers.map(h => {
+        const lowerH = h.toLowerCase().replace(/['"]/g, '').trim();
+        // Try exact match first
+        // Handle cutoff headers from screenshot if possible or just partial matching
+        for (const [key, value] of Object.entries(headerMapping)) {
+          if (lowerH === key || lowerH.includes(key)) return value;
+        }
+
+        if (lowerH.includes('employee') && (lowerH.includes('full') || lowerH.includes('name'))) return 'full_name'; // Fallback for oyee_full...
+        if (lowerH.includes('oyee_full')) return 'full_name';
+
+        // Try partial match for some common ones
+        if (lowerH.includes('passport') && lowerH.includes('expiry')) return 'passport_expiry_date';
+        if (lowerH.includes('insurance') && lowerH.includes('expiry')) return 'health_insurance_expiry_date';
+        if (lowerH.includes('passport') && (lowerH.includes('no') || lowerH.includes('num'))) return 'passport_no';
+        if (lowerH.includes('insurance') && (lowerH.includes('no') || lowerH.includes('num'))) return 'health_insurance_no';
+        if (lowerH.includes('birth')) return 'date_of_birth';
+
+        return lowerH; // Fallback to original (lowercased)
+      });
+
+      const data = rows.slice(1).map(row => {
+        const values = row.split(',').map(v => v.trim());
+        const obj = {};
+
+        // Skip empty rows
+        if (values.length === 1 && values[0] === '') return null;
+
+        normalizedHeaders.forEach((header, i) => {
+          let value = values[i];
+          // Handle optional values
+          if (value !== undefined) {
+            value = value.trim();
+            // Remove wrapping quotes if present
+            if (value.startsWith('"') && value.endsWith('"')) {
+              value = value.substring(1, value.length - 1);
+            }
+            if (value !== '') {
+              obj[header] = value;
+            }
+          }
+        });
+        return obj;
+      }).filter(Boolean);
+
+      const convertDate = (dateStr) => {
+        if (!dateStr) return null;
+
+        if (typeof dateStr !== 'string') return null;
+
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          return dateStr;
+        }
+
+        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+          const [day, month, year] = dateStr.split('/');
+          return `${year}-${month}-${day}`;
+        }
+
+        return dateStr;
+      };
+
+      const normalizedData = data.map(tech => ({
+        ...tech,
+        date_of_birth: convertDate(tech.date_of_birth),
+        induction_date: convertDate(tech.induction_date),
+        exit_date: convertDate(tech.exit_date),
+        expected_country_exit_date: convertDate(tech.expected_country_exit_date),
+        actual_country_exit_date: convertDate(tech.actual_country_exit_date),
+        expected_arrival_date: convertDate(tech.expected_arrival_date),
+        actual_arrival_date: convertDate(tech.actual_arrival_date),
+        last_transfer_date: convertDate(tech.last_transfer_date),
+        passport_expiry_date: convertDate(tech.passport_expiry_date),
+        health_insurance_expiry_date: convertDate(tech.health_insurance_expiry_date)
+      }));
+
+      // Try to upload the file to storage for record-keeping, but don't fail the whole process if it fails
+      try {
+        await base44.integrations.Core.UploadFile({ file: bulkFile });
+      } catch (uploadErr) {
+        console.warn("File upload to storage failed, but proceeding with data insertion:", uploadErr);
+      }
+
+      await bulkCreateMutation.mutateAsync(normalizedData);
+      setBulkFile(null);
+      // Success message is handled by mutation onSuccess
+
     } catch (error) {
+      console.error("Bulk upload error:", error);
       setUploadResult({ success: false, error: error.message });
     }
 
